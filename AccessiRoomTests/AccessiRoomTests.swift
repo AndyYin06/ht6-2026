@@ -2,6 +2,43 @@ import XCTest
 @testable import AccessiRoom
 
 final class AccessiRoomTests: XCTestCase {
+    func testDraggedPlacementStopsBeforeCrossingWall() {
+        let roomID = UUID()
+        let map = placementMap(
+            object: rectangle(minX: -0.25, maxX: 0.25, minZ: -0.25, maxZ: 0.25),
+            wall: rectangle(minX: 0.75, maxX: 0.85, minZ: -2, maxZ: 2)
+        )
+
+        let translation = ProposedPlacementGeometry.constrainedTranslation(
+            for: "chair",
+            requested: FloorPoint(x: 2, z: 0),
+            map: map,
+            arrangement: .empty(roomID: roomID)
+        )
+
+        XCTAssertGreaterThan(translation.x, 0.45)
+        XCTAssertLessThan(translation.x, 0.50)
+        XCTAssertEqual(translation.z, 0, accuracy: 0.000_001)
+    }
+
+    func testDraggedPlacementStaysInsideFloorBoundary() {
+        let roomID = UUID()
+        let map = placementMap(
+            object: rectangle(minX: -0.25, maxX: 0.25, minZ: -0.25, maxZ: 0.25),
+            wall: rectangle(minX: 1.8, maxX: 1.9, minZ: -2, maxZ: 2)
+        )
+
+        let translation = ProposedPlacementGeometry.constrainedTranslation(
+            for: "chair",
+            requested: FloorPoint(x: -3, z: 0),
+            map: map,
+            arrangement: .empty(roomID: roomID)
+        )
+
+        XCTAssertGreaterThan(translation.x, -1.76)
+        XCTAssertLessThan(translation.x, -1.70)
+    }
+
     func testDuplicateRoomItemDisplayNamesAreNumberedInCaptureOrder() {
         let items = [
             inventoryItem(id: "chair-a", category: "chair"),
@@ -22,6 +59,32 @@ final class AccessiRoomTests: XCTestCase {
         XCTAssertEqual(names["wall-b"], "Wall 2")
         XCTAssertEqual(names["door-a"], "Door 1")
         XCTAssertEqual(names["door-b"], "Door 2")
+    }
+
+    private func placementMap(object: FloorPolygon, wall: FloorPolygon) -> AssessmentMapModel {
+        AssessmentMapModel(
+            floor: rectangle(minX: -2, maxX: 2, minZ: -2, maxZ: 2),
+            obstacles: [
+                AssessmentMapModel.LabelledPolygon(id: "wall", label: "Wall", polygon: wall),
+                AssessmentMapModel.LabelledPolygon(id: "chair", label: "Chair", polygon: object),
+            ],
+            accessPoints: [],
+            zones: []
+        )
+    }
+
+    private func rectangle(
+        minX: Double,
+        maxX: Double,
+        minZ: Double,
+        maxZ: Double
+    ) -> FloorPolygon {
+        FloorPolygon(points: [
+            FloorPoint(x: minX, z: minZ),
+            FloorPoint(x: maxX, z: minZ),
+            FloorPoint(x: maxX, z: maxZ),
+            FloorPoint(x: minX, z: maxZ),
+        ])
     }
 
     func testMeasurementToleranceClassifiesConservatively() {
