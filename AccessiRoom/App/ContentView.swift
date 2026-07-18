@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var roomStore = AcceptedRoomStore()
     @StateObject private var profileStore = MobilityProfileStore()
+    @StateObject private var voiceSession = VoiceSession.live()
     @State private var presentedExperience: PresentedExperience?
 
     var body: some View {
@@ -120,6 +121,11 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+        .environmentObject(voiceSession)
+        .onChange(of: presentedExperience) { previous, current in
+            guard previous == .acceptedRoom, current == nil else { return }
+            Task { await voiceSession.stop() }
         }
     }
 

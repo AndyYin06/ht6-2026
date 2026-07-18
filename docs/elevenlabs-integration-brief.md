@@ -40,7 +40,7 @@ The deterministic local Assessment Engine remains the sole authority for results
 
 - Use a backend integration rather than embedding a permanent ElevenLabs credential in the iPad application.
 - The backend may broker credentials and the ElevenLabs conversation, but it does not become an authoritative assessment service or a store for RoomPlan data.
-- The exact backend platform, hosting model, and deployment destination are deferred from the current scope.
+- [ADR 0003](adr/0003-use-backend-issued-elevenlabs-webrtc-tokens.md) selects the official Swift SDK over WebRTC with one backend-issued, short-lived conversation token per session. The backend platform, hosting model, and deployment destination remain deferred.
 
 ### Consent, privacy, and retention
 

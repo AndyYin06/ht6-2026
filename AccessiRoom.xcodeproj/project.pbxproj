@@ -11,6 +11,15 @@
 		100000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* ContentView.swift */; };
 		100000000000000000000003 /* AccessiRoomTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* AccessiRoomTests.swift */; };
 		100000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* XCTest.framework */; };
+		A10000000000000000000001 /* AssessmentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AssessmentEngine.swift */; };
+		A10000000000000000000002 /* AssessmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AssessmentView.swift */; };
+		A10000000000000000000003 /* ProposedArrangement.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ProposedArrangement.swift */; };
+		A10000000000000000000004 /* ArrangementComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ArrangementComparison.swift */; };
+		B10000000000000000000001 /* VoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* VoiceSession.swift */; };
+		B10000000000000000000002 /* VoiceAssistantOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* VoiceAssistantOverlay.swift */; };
+		B10000000000000000000003 /* AgentGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* AgentGateway.swift */; };
+		B10000000000000000000004 /* ElevenLabsVoiceSessionTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* ElevenLabsVoiceSessionTransport.swift */; };
+		B10000000000000000000005 /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = B50000000000000000000001 /* ElevenLabs */; };
 		C10000000000000000000002 /* RoomCaptureViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* RoomCaptureViewController.swift */; };
 		D10000000000000000000001 /* DemoRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* DemoRoomView.swift */; };
 		D10000000000000000000002 /* DemoRoom.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* DemoRoom.json */; };
@@ -23,10 +32,6 @@
 		F10000000000000000000001 /* MobilityProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000001 /* MobilityProfile.swift */; };
 		F10000000000000000000002 /* MobilityProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* MobilityProfileStore.swift */; };
 		F10000000000000000000003 /* MobilityProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000003 /* MobilityProfileView.swift */; };
-		A10000000000000000000001 /* AssessmentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AssessmentEngine.swift */; };
-		A10000000000000000000002 /* AssessmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AssessmentView.swift */; };
-		A10000000000000000000003 /* ProposedArrangement.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ProposedArrangement.swift */; };
-		A10000000000000000000004 /* ArrangementComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ArrangementComparison.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,6 +51,15 @@
 		200000000000000000000004 /* AccessiRoom.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AccessiRoom.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000005 /* AccessiRoomTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AccessiRoomTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000006 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		200000000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000001 /* AssessmentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* AssessmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* ProposedArrangement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposedArrangement.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* ArrangementComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrangementComparison.swift; sourceTree = "<group>"; };
+		B20000000000000000000001 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
+		B20000000000000000000002 /* VoiceAssistantOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAssistantOverlay.swift; sourceTree = "<group>"; };
+		B20000000000000000000003 /* AgentGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentGateway.swift; sourceTree = "<group>"; };
+		B20000000000000000000004 /* ElevenLabsVoiceSessionTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevenLabsVoiceSessionTransport.swift; sourceTree = "<group>"; };
 		C20000000000000000000002 /* RoomCaptureViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureViewController.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* DemoRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoRoomView.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* DemoRoom.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = DemoRoom.json; sourceTree = "<group>"; };
@@ -58,10 +72,6 @@
 		F20000000000000000000001 /* MobilityProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilityProfile.swift; sourceTree = "<group>"; };
 		F20000000000000000000002 /* MobilityProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilityProfileStore.swift; sourceTree = "<group>"; };
 		F20000000000000000000003 /* MobilityProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilityProfileView.swift; sourceTree = "<group>"; };
-		A20000000000000000000001 /* AssessmentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentEngine.swift; sourceTree = "<group>"; };
-		A20000000000000000000002 /* AssessmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentView.swift; sourceTree = "<group>"; };
-		A20000000000000000000003 /* ProposedArrangement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposedArrangement.swift; sourceTree = "<group>"; };
-		A20000000000000000000004 /* ArrangementComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrangementComparison.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +79,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000005 /* ElevenLabs in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,10 +107,12 @@
 		700000000000000000000002 /* AccessiRoom */ = {
 			isa = PBXGroup;
 			children = (
+				200000000000000000000007 /* Info.plist */,
 				700000000000000000000006 /* App */,
 				F70000000000000000000001 /* MobilityProfile */,
 				C70000000000000000000001 /* RoomCapture */,
 				A70000000000000000000001 /* Assessment */,
+				B70000000000000000000001 /* VoiceAssistant */,
 			);
 			path = AccessiRoom;
 			sourceTree = "<group>";
@@ -138,6 +151,28 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		A70000000000000000000001 /* Assessment */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000004 /* ArrangementComparison.swift */,
+				A20000000000000000000001 /* AssessmentEngine.swift */,
+				A20000000000000000000002 /* AssessmentView.swift */,
+				A20000000000000000000003 /* ProposedArrangement.swift */,
+			);
+			path = Assessment;
+			sourceTree = "<group>";
+		};
+		B70000000000000000000001 /* VoiceAssistant */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000003 /* AgentGateway.swift */,
+				B20000000000000000000004 /* ElevenLabsVoiceSessionTransport.swift */,
+				B20000000000000000000001 /* VoiceSession.swift */,
+				B20000000000000000000002 /* VoiceAssistantOverlay.swift */,
+			);
+			path = VoiceAssistant;
+			sourceTree = "<group>";
+		};
 		C70000000000000000000001 /* RoomCapture */ = {
 			isa = PBXGroup;
 			children = (
@@ -153,6 +188,15 @@
 			path = RoomCapture;
 			sourceTree = "<group>";
 		};
+		D70000000000000000000001 /* DemoRoomResources */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000002 /* DemoRoom.json */,
+				D20000000000000000000003 /* DemoRoom.usdz */,
+			);
+			path = DemoRoomResources;
+			sourceTree = "<group>";
+		};
 		F70000000000000000000001 /* MobilityProfile */ = {
 			isa = PBXGroup;
 			children = (
@@ -161,26 +205,6 @@
 				F20000000000000000000003 /* MobilityProfileView.swift */,
 			);
 			path = MobilityProfile;
-			sourceTree = "<group>";
-		};
-		A70000000000000000000001 /* Assessment */ = {
-			isa = PBXGroup;
-			children = (
-				A20000000000000000000004 /* ArrangementComparison.swift */,
-				A20000000000000000000001 /* AssessmentEngine.swift */,
-				A20000000000000000000002 /* AssessmentView.swift */,
-				A20000000000000000000003 /* ProposedArrangement.swift */,
-			);
-			path = Assessment;
-			sourceTree = "<group>";
-		};
-		D70000000000000000000001 /* DemoRoomResources */ = {
-			isa = PBXGroup;
-			children = (
-				D20000000000000000000002 /* DemoRoom.json */,
-				D20000000000000000000003 /* DemoRoom.usdz */,
-			);
-			path = DemoRoomResources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -199,6 +223,9 @@
 			dependencies = (
 			);
 			name = AccessiRoom;
+			packageProductDependencies = (
+				B50000000000000000000001 /* ElevenLabs */,
+			);
 			productName = AccessiRoom;
 			productReference = 200000000000000000000004 /* AccessiRoom.app */;
 			productType = "com.apple.product-type.application";
@@ -249,6 +276,9 @@
 				Base,
 			);
 			mainGroup = 700000000000000000000001;
+			packageReferences = (
+				B40000000000000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */,
+			);
 			productRefGroup = 700000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -299,6 +329,10 @@
 				A10000000000000000000002 /* AssessmentView.swift in Sources */,
 				A10000000000000000000003 /* ProposedArrangement.swift in Sources */,
 				A10000000000000000000004 /* ArrangementComparison.swift in Sources */,
+				B10000000000000000000001 /* VoiceSession.swift in Sources */,
+				B10000000000000000000002 /* VoiceAssistantOverlay.swift in Sources */,
+				B10000000000000000000003 /* AgentGateway.swift in Sources */,
+				B10000000000000000000004 /* ElevenLabsVoiceSessionTransport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -369,12 +403,15 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R6NTQM5AY3;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "AccessiRoom uses the camera to capture a room for an on-device mobility assessment.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				ELEVENLABS_BACKEND_BASE_URL = "";
+				"ELEVENLABS_BACKEND_BASE_URL[arch=*]" = "https://counted-doll-caused-rating.trycloudflare.com";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AccessiRoom/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.accessiroom.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -393,12 +430,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R6NTQM5AY3;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "AccessiRoom uses the camera to capture a room for an on-device mobility assessment.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				ELEVENLABS_BACKEND_BASE_URL = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AccessiRoom/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.accessiroom.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -471,6 +510,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B40000000000000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/elevenlabs/elevenlabs-swift-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.2.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B50000000000000000000001 /* ElevenLabs */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B40000000000000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */;
+			productName = ElevenLabs;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 400000000000000000000001 /* Project object */;
 }

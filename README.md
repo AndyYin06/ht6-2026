@@ -25,6 +25,10 @@ xcodebuild -project AccessiRoom.xcodeproj \
   build
 ```
 
+### ElevenLabs Voice Backend
+
+The optional read-only voice interaction uses a small token broker in [`backend/`](backend/README.md). The iPad application never receives an ElevenLabs API key. Copy `backend/.env.example` to `backend/.env`, enter the API key and private agent ID, run the backend, and configure the app target's `ELEVENLABS_BACKEND_BASE_URL` build setting with the deployed HTTPS origin.
+
 The checked-in shared scheme includes the `AccessiRoomTests` unit-test target. Before running on a device, set a unique bundle identifier and development team under the app target's Signing & Capabilities settings.
 
 ### Room Capture Flow

@@ -80,6 +80,7 @@ struct RoomSetupReviewView: View {
         } message: {
             Text(errorMessage ?? "An unknown error occurred.")
         }
+        .voiceAssistantOverlay(on: .roomSetup)
     }
 
     @ViewBuilder

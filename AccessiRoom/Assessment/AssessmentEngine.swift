@@ -78,6 +78,22 @@ struct AssessmentRoute: Identifiable, Equatable, Sendable {
     let targetID: String
     let points: [FloorPoint]
     let limitingClearanceMetres: Double?
+    let requiredClearanceMetres: Double
+    let limitingSegment: AssessmentRouteSegment?
+    let outcome: AnalysisOutcome
+}
+
+struct AssessmentRouteSegment: Equatable, Sendable {
+    let start: FloorPoint
+    let end: FloorPoint
+}
+
+struct AssessmentMeasurementEvidence: Identifiable, Equatable, Sendable {
+    let id: String
+    let label: String
+    let measuredMetres: Double?
+    let requiredMetres: Double
+    let toleranceMetres: Double?
     let outcome: AnalysisOutcome
 }
 
@@ -93,12 +109,14 @@ struct AssessmentRequirementResult: Identifiable, Equatable, Sendable {
     let id: String
     let kind: AssessmentRequirementKind
     let title: String
+    let targetObjectID: String?
     let priority: MobilityNeedPriority
     let outcome: AnalysisOutcome
     let summary: String
     let routes: [AssessmentRoute]
     let findings: [AssessmentFinding]
     let focusPolygons: [FloorPolygon]
+    let measurements: [AssessmentMeasurementEvidence]
 }
 
 enum ArrangementStatus: String, Codable, Sendable {
@@ -240,6 +258,7 @@ struct AssessmentEngine {
                 id: "access-\(accessPoint.id)",
                 kind: .accessPoint,
                 title: accessPoint.label,
+                targetObjectID: nil,
                 priority: .essential,
                 outcome: outcome,
                 summary: Self.measurementExplanation(
@@ -249,7 +268,15 @@ struct AssessmentEngine {
                 ),
                 routes: [],
                 findings: finding,
-                focusPolygons: [accessPoint.polygon]
+                focusPolygons: [accessPoint.polygon],
+                measurements: [AssessmentMeasurementEvidence(
+                    id: "opening-width-\(accessPoint.id)",
+                    label: "Captured opening clearance",
+                    measuredMetres: accessPoint.width,
+                    requiredMetres: spatialRoom.minimumPassageWidth,
+                    toleranceMetres: Self.measurementToleranceMetres,
+                    outcome: outcome
+                )]
             ))
         }
 
@@ -259,6 +286,7 @@ struct AssessmentEngine {
                     id: destination.id,
                     kind: .requiredDestination,
                     title: destination.label,
+                    targetObjectID: destination.objectID,
                     priority: destination.priority,
                     outcome: .doesNotMeetNeed,
                     summary: "The Required Destination is proposed for removal, so it cannot support this need.",
@@ -270,7 +298,11 @@ struct AssessmentEngine {
                         outcome: .doesNotMeetNeed,
                         location: destination.zone.centre
                     )],
-                    focusPolygons: [destination.zone]
+                    focusPolygons: [destination.zone],
+                    measurements: Self.approachZoneMeasurements(
+                        destination: destination,
+                        outcome: .doesNotMeetNeed
+                    )
                 ))
                 continue
             }
@@ -303,6 +335,8 @@ struct AssessmentEngine {
                         targetID: destination.id,
                         points: [],
                         limitingClearanceMetres: accessPoint.width,
+                        requiredClearanceMetres: spatialRoom.minimumPassageWidth,
+                        limitingSegment: nil,
                         outcome: inherited
                     )
                 } else if !spatialRoom.floorIsComplete {
@@ -312,6 +346,8 @@ struct AssessmentEngine {
                         targetID: destination.id,
                         points: [],
                         limitingClearanceMetres: nil,
+                        requiredClearanceMetres: spatialRoom.minimumPassageWidth,
+                        limitingSegment: nil,
                         outcome: .needsVerification
                     )
                 } else {
@@ -347,12 +383,17 @@ struct AssessmentEngine {
                 id: destination.id,
                 kind: .requiredDestination,
                 title: destination.label,
+                targetObjectID: destination.objectID,
                 priority: destination.priority,
                 outcome: outcome,
                 summary: Self.destinationSummary(outcome: outcome, routeCount: routes.count),
                 routes: routes,
                 findings: findings,
-                focusPolygons: [destination.zone]
+                focusPolygons: [destination.zone],
+                measurements: Self.approachZoneMeasurements(
+                    destination: destination,
+                    outcome: zoneOutcome
+                ) + routes.map(Self.routeMeasurement)
             ))
         }
 
@@ -373,6 +414,8 @@ struct AssessmentEngine {
                         targetID: turningZone.id,
                         points: [],
                         limitingClearanceMetres: accessPoint.width,
+                        requiredClearanceMetres: spatialRoom.minimumPassageWidth,
+                        limitingSegment: nil,
                         outcome: accessOutcomes[accessPoint.id] ?? .needsVerification
                     )
                 } else if spatialRoom.floorIsComplete {
@@ -390,6 +433,8 @@ struct AssessmentEngine {
                         targetID: turningZone.id,
                         points: [],
                         limitingClearanceMetres: nil,
+                        requiredClearanceMetres: spatialRoom.minimumPassageWidth,
+                        limitingSegment: nil,
                         outcome: .needsVerification
                     )
                 }
@@ -414,6 +459,7 @@ struct AssessmentEngine {
                 id: turningZone.id,
                 kind: .turningZone,
                 title: turningZone.label,
+                targetObjectID: nil,
                 priority: .essential,
                 outcome: outcome,
                 summary: outcome == .meetsNeed
@@ -421,7 +467,15 @@ struct AssessmentEngine {
                     : "Turning clearance or reachability requires attention.",
                 routes: routes,
                 findings: findings,
-                focusPolygons: [turningZone.polygon]
+                focusPolygons: [turningZone.polygon],
+                measurements: [AssessmentMeasurementEvidence(
+                    id: "turning-diameter-\(turningZone.id)",
+                    label: "Required turning-space diameter",
+                    measuredMetres: nil,
+                    requiredMetres: spatialRoom.turningDiameter,
+                    toleranceMetres: Self.measurementToleranceMetres,
+                    outcome: zoneOutcome
+                )] + routes.map(Self.routeMeasurement)
             ))
         }
 
@@ -430,6 +484,7 @@ struct AssessmentEngine {
                 id: "custom-\(need.id.uuidString)",
                 kind: .customMobilityNeed,
                 title: need.title,
+                targetObjectID: nil,
                 priority: need.priority,
                 outcome: .needsVerification,
                 summary: "This free-text need has no structured measurement rule and requires Guided Verification.",
@@ -443,7 +498,8 @@ struct AssessmentEngine {
                     outcome: .needsVerification,
                     location: nil
                 )],
-                focusPolygons: []
+                focusPolygons: [],
+                measurements: []
             ))
         }
 
@@ -520,6 +576,47 @@ struct AssessmentEngine {
         return "Captured clearance is \(measuredText) m; required clearance is \(requiredText) m with ±5 cm Measurement Tolerance. \(outcome.title)."
     }
 
+    private static func routeMeasurement(_ route: AssessmentRoute) -> AssessmentMeasurementEvidence {
+        AssessmentMeasurementEvidence(
+            id: route.id,
+            label: "Route limiting clearance",
+            measuredMetres: route.limitingClearanceMetres,
+            requiredMetres: route.requiredClearanceMetres,
+            toleranceMetres: measurementToleranceMetres,
+            outcome: route.outcome
+        )
+    }
+
+    private static func approachZoneMeasurements(
+        destination: SpatialRoom.Destination,
+        outcome: AnalysisOutcome
+    ) -> [AssessmentMeasurementEvidence] {
+        let width = destination.zone.points.count >= 2
+            ? destination.zone.points[0].distance(to: destination.zone.points[1])
+            : 0
+        let depth = destination.zone.points.count >= 3
+            ? destination.zone.points[1].distance(to: destination.zone.points[2])
+            : 0
+        return [
+            AssessmentMeasurementEvidence(
+                id: "approach-width-\(destination.id)",
+                label: "Required Approach Zone width",
+                measuredMetres: nil,
+                requiredMetres: width,
+                toleranceMetres: measurementToleranceMetres,
+                outcome: outcome
+            ),
+            AssessmentMeasurementEvidence(
+                id: "approach-depth-\(destination.id)",
+                label: "Required Approach Zone depth",
+                measuredMetres: nil,
+                requiredMetres: depth,
+                toleranceMetres: measurementToleranceMetres,
+                outcome: outcome
+            ),
+        ]
+    }
+
     private static func destinationSummary(outcome: AnalysisOutcome, routeCount: Int) -> String {
         switch outcome {
         case .meetsNeed:
@@ -570,6 +667,7 @@ private struct SpatialRoom {
     let destinations: [Destination]
     let turningZones: [TurningZone]
     let minimumPassageWidth: Double
+    let turningDiameter: Double
     let mapModel: AssessmentMapModel
     let conflicts: [ArrangementConflict]
 
@@ -686,14 +784,15 @@ private struct SpatialRoom {
             )
         }
 
-        let turningDiameter = profile.measurements.turningSpaceDiameterCentimetres / 100
+        let configuredTurningDiameter = profile.measurements.turningSpaceDiameterCentimetres / 100
+        turningDiameter = configuredTurningDiameter
         turningZones = setup.turningZones.map { zone in
             TurningZone(
                 id: "turning-\(zone.id.uuidString)",
                 label: zone.name,
                 polygon: Self.circle(
                     centre: FloorPoint(x: zone.centreXMetres, z: zone.centreZMetres),
-                    radius: turningDiameter / 2
+                    radius: configuredTurningDiameter / 2
                 )
             )
         }
@@ -1058,6 +1157,8 @@ private struct NavigationGrid {
                 targetID: targetID,
                 points: [],
                 limitingClearanceMetres: 0,
+                requiredClearanceMetres: requiredWidth,
+                limitingSegment: nil,
                 outcome: .doesNotMeetNeed
             )
         }
@@ -1070,12 +1171,25 @@ private struct NavigationGrid {
         }
         cells.reverse()
         let measured = max(0, capacity[index(goal)] - cellSize)
+        let limitingCellIndex = cells.indices.min { lhs, rhs in
+            clearance[index(cells[lhs])] < clearance[index(cells[rhs])]
+        }
+        let limitingSegment = limitingCellIndex.flatMap { cellIndex -> AssessmentRouteSegment? in
+            guard cells.count > 1 else { return nil }
+            let startIndex = cellIndex == cells.count - 1 ? cellIndex - 1 : cellIndex
+            return AssessmentRouteSegment(
+                start: point(for: cells[startIndex]),
+                end: point(for: cells[startIndex + 1])
+            )
+        }
         return AssessmentRoute(
             id: "route-\(accessPointID)-\(targetID)",
             accessPointID: accessPointID,
             targetID: targetID,
             points: cells.map(point(for:)),
             limitingClearanceMetres: measured,
+            requiredClearanceMetres: requiredWidth,
+            limitingSegment: limitingSegment,
             outcome: AssessmentEngine.classify(
                 measured: measured,
                 required: requiredWidth,
@@ -1091,6 +1205,8 @@ private struct NavigationGrid {
             targetID: targetID,
             points: [],
             limitingClearanceMetres: nil,
+            requiredClearanceMetres: room.minimumPassageWidth,
+            limitingSegment: nil,
             outcome: .needsVerification
         )
     }

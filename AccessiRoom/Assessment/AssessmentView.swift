@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AssessmentView: View {
+    @EnvironmentObject private var voiceSession: VoiceSession
+
     let room: CapturedRoomArtifact
     let profile: MobilityProfile
     let setup: RoomSetup
@@ -10,6 +12,7 @@ struct AssessmentView: View {
     @State private var result: AssessmentResult?
     @State private var comparison: ArrangementComparison?
     @State private var selectedRequirementID: String?
+    @State private var visualFocus: RequirementVisualFocus?
     @State private var selectedObjectID: String?
     @State private var arrangement: ProposedArrangement
     @State private var undoStack: [ProposedArrangement] = []
@@ -45,6 +48,16 @@ struct AssessmentView: View {
 
     private var selectedObservedRequirement: AssessmentRequirementResult? {
         comparison?.observed.requirements.first { $0.id == selectedRequirementID }
+    }
+
+    private var voiceSurface: VoiceSupportedSurface {
+        if comparison != nil {
+            .arrangementComparison
+        } else if arrangement.hasChanges {
+            .proposedArrangement
+        } else {
+            .assessment
+        }
     }
 
     var body: some View {
@@ -85,6 +98,7 @@ struct AssessmentView: View {
         } message: {
             Text(errorMessage ?? "An unknown error occurred.")
         }
+        .voiceAssistantOverlay(on: voiceSurface)
     }
 
     private func assessment(_ result: AssessmentResult) -> some View {
@@ -96,7 +110,8 @@ struct AssessmentView: View {
                 } else {
                     AccessibilityMap(
                         map: result.map,
-                        requirement: selectedRequirement
+                        requirement: selectedRequirement,
+                        focus: visualFocus
                     )
                     .frame(height: 330)
                     .accessibilityLabel(mapAccessibilityLabel)
@@ -114,9 +129,10 @@ struct AssessmentView: View {
                 ForEach(result.requirements) { requirement in
                     RequirementCard(
                         requirement: requirement,
-                        isSelected: requirement.id == selectedRequirementID
+                        isSelected: requirement.id == selectedRequirementID,
+                        evidenceExplanation: evidenceExplanation(for: requirement, in: result)
                     ) {
-                        withAnimation { selectedRequirementID = requirement.id }
+                        withAnimation { focus(requirement, in: result) }
                     }
                 }
             }
@@ -224,6 +240,7 @@ struct AssessmentView: View {
             AccessibilityMap(
                 map: result.map,
                 requirement: requirement,
+                focus: visualFocus,
                 alignmentPoints: alignmentPoints
             )
             .frame(width: 340, height: 300)
@@ -551,9 +568,18 @@ struct AssessmentView: View {
             guard self.arrangement == arrangement else { return }
             result = assessment.0
             comparison = assessment.1
-            selectedRequirementID = assessment.0.requirements.first(where: { $0.outcome == .doesNotMeetNeed })?.id
-                ?? assessment.0.requirements.first(where: { $0.outcome == .needsVerification })?.id
-                ?? assessment.0.requirements.first?.id
+            voiceSession.installGateway(LocalAgentGateway(assessment: assessment.0)) { response in
+                applyVoiceFocus(response, in: assessment.0)
+            }
+            let initiallySelected = assessment.0.requirements.first(where: { $0.outcome == .doesNotMeetNeed })
+                ?? assessment.0.requirements.first(where: { $0.outcome == .needsVerification })
+                ?? assessment.0.requirements.first
+            if let initiallySelected {
+                focus(initiallySelected, in: assessment.0)
+            } else {
+                selectedRequirementID = nil
+                visualFocus = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -562,6 +588,43 @@ struct AssessmentView: View {
 
     private func metres(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(2))) + " m"
+    }
+
+    private func focus(_ requirement: AssessmentRequirementResult, in result: AssessmentResult) {
+        let response = LocalAgentGateway(assessment: result).focusRequirement(
+            RequirementFocusRequest(reference: .selectedRequirement(id: requirement.id))
+        )
+        selectedRequirementID = requirement.id
+        if case let .focused(focus) = response {
+            visualFocus = focus
+        }
+    }
+
+    private func applyVoiceFocus(_ response: RequirementFocusResponse, in result: AssessmentResult) {
+        switch response {
+        case let .focused(focus):
+            selectedRequirementID = focus.requirementID
+            visualFocus = focus
+        case let .clarification(_, candidateFocus):
+            selectedRequirementID = nil
+            visualFocus = candidateFocus
+        case .cleared:
+            selectedRequirementID = nil
+            visualFocus = nil
+        case .refused:
+            break
+        }
+    }
+
+    private func evidenceExplanation(
+        for requirement: AssessmentRequirementResult,
+        in result: AssessmentResult
+    ) -> String? {
+        let response = LocalAgentGateway(assessment: result).getRequirementEvidence(
+            RequirementEvidenceRequest(reference: .selectedRequirement(id: requirement.id))
+        )
+        guard case let .evidence(payload) = response else { return nil }
+        return payload.explanation
     }
 
     private func statusColor(_ status: ArrangementStatus) -> Color {
@@ -586,6 +649,7 @@ struct AssessmentView: View {
 private struct RequirementCard: View {
     let requirement: AssessmentRequirementResult
     let isSelected: Bool
+    let evidenceExplanation: String?
     let select: () -> Void
 
     var body: some View {
@@ -608,6 +672,15 @@ private struct RequirementCard: View {
                     .multilineTextAlignment(.leading)
 
                 if isSelected {
+                    if let evidenceExplanation {
+                        Divider()
+                        Label("Evidence-grounded explanation", systemImage: "quote.bubble.fill")
+                            .font(.subheadline.bold())
+                        Text(evidenceExplanation)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
                     if !requirement.routes.isEmpty {
                         Divider()
                         Text("Routes")
@@ -660,6 +733,7 @@ private struct RequirementCard: View {
 private struct AccessibilityMap: View {
     let map: AssessmentMapModel
     let requirement: AssessmentRequirementResult?
+    var focus: RequirementVisualFocus? = nil
     var alignmentPoints: [FloorPoint]? = nil
 
     var body: some View {
@@ -672,15 +746,17 @@ private struct AccessibilityMap: View {
 
             drawPolygon(map.floor, color: .secondary.opacity(0.12), stroke: .secondary, context: &context, transform: transform)
             for obstacle in map.obstacles {
+                let isFocusedObject = obstacle.id == focus?.targetObjectID
+                    || focus?.candidateObjectIDs.contains(obstacle.id) == true
                 drawPolygon(
                     obstacle.polygon,
                     color: obstacle.isRemoved
                         ? .red.opacity(0.12)
                         : obstacle.isProposed ? .purple.opacity(0.55) : .gray.opacity(0.65),
-                    stroke: obstacle.isRemoved ? .red : obstacle.isProposed ? .purple : .gray,
+                    stroke: isFocusedObject ? .yellow : obstacle.isRemoved ? .red : obstacle.isProposed ? .purple : .gray,
                     context: &context,
                     transform: transform,
-                    lineWidth: obstacle.isProposed ? 3 : 1
+                    lineWidth: isFocusedObject ? 5 : obstacle.isProposed ? 3 : 1
                 )
                 if obstacle.isRemoved {
                     drawRemovalMark(obstacle.polygon, context: &context, transform: transform)
@@ -690,7 +766,15 @@ private struct AccessibilityMap: View {
                 drawPolygon(accessPoint.polygon, color: .blue.opacity(0.45), stroke: .blue, context: &context, transform: transform)
             }
             for zone in map.zones {
-                drawPolygon(zone.polygon, color: .teal.opacity(0.18), stroke: .teal, context: &context, transform: transform)
+                let isCandidate = focus?.candidateRequirementIDs.contains(zone.id) == true
+                drawPolygon(
+                    zone.polygon,
+                    color: isCandidate ? .yellow.opacity(0.22) : .teal.opacity(0.18),
+                    stroke: isCandidate ? .yellow : .teal,
+                    context: &context,
+                    transform: transform,
+                    lineWidth: isCandidate ? 4 : 1
+                )
             }
             for polygon in requirement?.focusPolygons ?? [] {
                 drawPolygon(polygon, color: outcomeColor.opacity(0.22), stroke: outcomeColor, context: &context, transform: transform, lineWidth: 3)
@@ -699,7 +783,22 @@ private struct AccessibilityMap: View {
                 var path = Path()
                 path.move(to: transform.point(route.points[0]))
                 for point in route.points.dropFirst() { path.addLine(to: transform.point(point)) }
-                context.stroke(path, with: .color(color(for: route.outcome)), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                let isFocusedRoute = focus?.routeID == nil || route.id == focus?.routeID
+                context.stroke(
+                    path,
+                    with: .color(color(for: route.outcome).opacity(isFocusedRoute ? 1 : 0.25)),
+                    style: StrokeStyle(lineWidth: isFocusedRoute ? 5 : 2, lineCap: .round, lineJoin: .round)
+                )
+            }
+            if let segment = focus?.limitingSegment {
+                var path = Path()
+                path.move(to: transform.point(segment.start))
+                path.addLine(to: transform.point(segment.end))
+                context.stroke(
+                    path,
+                    with: .color(.yellow),
+                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
+                )
             }
         }
         .background(.background, in: RoundedRectangle(cornerRadius: 16))

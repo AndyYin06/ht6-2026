@@ -1,0 +1,16 @@
+{
+  "name": "accessiroom-voice-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal ElevenLabs WebRTC token broker for AccessiRoom",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "dev": "node --env-file=.env --watch src/server.mjs",
+    "start": "node src/server.mjs",
+    "start:local": "node --env-file=.env src/server.mjs",
+    "test": "node --test --test-reporter=spec"
+  }
+}
