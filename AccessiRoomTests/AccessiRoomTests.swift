@@ -196,6 +196,34 @@ final class AccessiRoomTests: XCTestCase {
         XCTAssertEqual(comparison.newlyIntroducedFindings.map(\.id), ["new"])
     }
 
+    func testSpaciousRouteIsAcceptedAndRenderedDirectly() throws {
+        let fixture = try RoomStoreFixture()
+        defer { fixture.remove() }
+
+        let result = try navigationAssessment(fixture: fixture, hasNarrowBarrier: false)
+        let destination = try XCTUnwrap(result.requirements.first { $0.title == "Bed" })
+        let route = try XCTUnwrap(destination.routes.first)
+        XCTAssertEqual(destination.outcome, .meetsNeed)
+        XCTAssertEqual(route.outcome, .meetsNeed)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(route.limitingClearanceMetres), 0.80)
+        XCTAssertLessThanOrEqual(route.points.count, 4, "The representative route should not snake across open space")
+        XCTAssertLessThan(routeLength(route.points), 3.0)
+    }
+
+    func testTrulyNarrowInteriorBarrierStillRejectsRoute() throws {
+        let fixture = try RoomStoreFixture()
+        defer { fixture.remove() }
+
+        let result = try navigationAssessment(fixture: fixture, hasNarrowBarrier: true)
+        let destination = try XCTUnwrap(result.requirements.first { $0.title == "Bed" })
+        let route = try XCTUnwrap(destination.routes.first)
+
+        XCTAssertEqual(destination.outcome, .doesNotMeetNeed)
+        XCTAssertEqual(route.outcome, .doesNotMeetNeed)
+        XCTAssertLessThan(try XCTUnwrap(route.limitingClearanceMetres), 0.70)
+        XCTAssertNotNil(route.limitingPoint)
+    }
+
     @MainActor
     func testConfirmedMobilityProfilePersistsAcrossStoreInstances() throws {
         let fixture = try RoomStoreFixture()
@@ -485,6 +513,32 @@ final class AccessiRoomTests: XCTestCase {
             )
         )
     }
+
+    private func navigationAssessment(
+        fixture: RoomStoreFixture,
+        hasNarrowBarrier: Bool
+    ) throws -> AssessmentResult {
+        let room = try fixture.makeNavigationRoomCandidate(hasNarrowBarrier: hasNarrowBarrier)
+        let inventory = try CapturedRoomInventory.load(from: room.jsonURL)
+        var setup = RoomSetup.draft(roomID: room.id, inventory: inventory, measurements: nil)
+        setup.accessPointIDs = ["door-1"]
+        setup.objects = setup.objects.map { object in
+            var object = object
+            object.isRequiredDestination = object.id == "bed-1"
+            return object
+        }
+        setup.confirmedAt = Date()
+
+        var profile = MobilityProfile.customDraft()
+        profile.occupantName = "Navigation Test"
+        profile.measurements.minimumPassageWidthCentimetres = 75
+
+        return try AssessmentEngine().assess(room: room, profile: profile, setup: setup)
+    }
+
+    private func routeLength(_ points: [FloorPoint]) -> Double {
+        zip(points, points.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
+    }
 }
 
 private struct RoomStoreFixture {
@@ -582,6 +636,70 @@ private struct RoomStoreFixture {
             "category": {"table": {}},
             "dimensions": [0.8,1.0,0.8],
             "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 1,0,0,1]
+          }]
+        }
+        """
+        try Data(json.utf8).write(to: candidate.jsonURL, options: .atomic)
+        return candidate
+    }
+
+    func makeNavigationRoomCandidate(hasNarrowBarrier: Bool) throws -> CapturedRoomArtifact {
+        let candidate = try makeCandidate(source: .demo, contents: "navigation")
+        let barrierObjects = hasNarrowBarrier
+            ? """
+              ,{
+                "identifier": "barrier-left",
+                "category": {"storage": {}},
+                "dimensions": [1.9, 1.0, 0.5],
+                "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, -1.05,0,0.9,1]
+              },{
+                "identifier": "barrier-right",
+                "category": {"storage": {}},
+                "dimensions": [1.9, 1.0, 0.5],
+                "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 1.05,0,0.9,1]
+              }
+              """
+            : ""
+        let json = """
+        {
+          "doors": [{
+            "identifier": "door-1",
+            "category": {"door": {}},
+            "dimensions": [0.82, 2.0, 0],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,2,1]
+          }],
+          "walls": [{
+            "identifier": "wall-top",
+            "category": {"wall": {}},
+            "dimensions": [4.0, 2.4, 0],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,2,1]
+          },{
+            "identifier": "wall-bottom",
+            "category": {"wall": {}},
+            "dimensions": [4.0, 2.4, 0],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-2,1]
+          },{
+            "identifier": "wall-left",
+            "category": {"wall": {}},
+            "dimensions": [4.0, 2.4, 0],
+            "transform": [0,0,1,0, 0,1,0,0, -1,0,0,0, -2,0,0,1]
+          },{
+            "identifier": "wall-right",
+            "category": {"wall": {}},
+            "dimensions": [4.0, 2.4, 0],
+            "transform": [0,0,1,0, 0,1,0,0, -1,0,0,0, 2,0,0,1]
+          }],
+          "objects": [{
+            "identifier": "bed-1",
+            "category": {"bed": {}},
+            "dimensions": [1.2, 0.7, 0.8],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-0.8,1]
+          }\(barrierObjects)],
+          "floors": [{
+            "identifier": "floor-1",
+            "category": {"floor": {}},
+            "polygonCorners": [[-2,0,-2], [2,0,-2], [2,0,2], [-2,0,2]],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]
           }]
         }
         """

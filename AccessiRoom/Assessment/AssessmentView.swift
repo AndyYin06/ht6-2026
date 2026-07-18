@@ -699,7 +699,17 @@ private struct AccessibilityMap: View {
                 var path = Path()
                 path.move(to: transform.point(route.points[0]))
                 for point in route.points.dropFirst() { path.addLine(to: transform.point(point)) }
-                context.stroke(path, with: .color(color(for: route.outcome)), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                let routeColor: Color = route.outcome == .doesNotMeetNeed ? .secondary : color(for: route.outcome)
+                context.stroke(
+                    path,
+                    with: .color(routeColor),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                )
+                if route.outcome == .doesNotMeetNeed, let limitingPoint = route.limitingPoint {
+                    let centre = transform.point(limitingPoint)
+                    let marker = Path(ellipseIn: CGRect(x: centre.x - 6, y: centre.y - 6, width: 12, height: 12))
+                    context.fill(marker, with: .color(.red))
+                }
             }
         }
         .background(.background, in: RoundedRectangle(cornerRadius: 16))
