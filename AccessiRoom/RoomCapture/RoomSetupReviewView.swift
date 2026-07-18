@@ -62,7 +62,14 @@ struct RoomSetupReviewView: View {
             }
         }
         .fullScreenCover(isPresented: $showingAssessment) {
-            AssessmentEntryView(onClose: { showingAssessment = false })
+            if let room, let setup = store.roomSetup, setup.isConfirmed {
+                AssessmentView(
+                    room: room,
+                    profile: profile,
+                    setup: setup,
+                    onClose: { showingAssessment = false }
+                )
+            }
         }
         .alert("Unable to Save Setup", isPresented: Binding(
             get: { errorMessage != nil && inventory != nil },
@@ -168,7 +175,7 @@ struct RoomSetupReviewView: View {
             }
 
             Section("Approach Zones") {
-                Text("Configure the usable arrival space beside each Required Destination.")
+                Text("Choose the arrival side for each Required Destination. Zone dimensions come from the confirmed Mobility Profile.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 ForEach(inventory.objects) { item in
@@ -182,16 +189,8 @@ struct RoomSetupReviewView: View {
                                     Text(side.title).tag(side)
                                 }
                             }
-                            MeasurementStepper(
-                                title: "Width",
-                                value: draft.objects[index].approachZone.widthMetres,
-                                range: 0.3...3
-                            )
-                            MeasurementStepper(
-                                title: "Depth",
-                                value: draft.objects[index].approachZone.depthMetres,
-                                range: 0.3...3
-                            )
+                            LabeledContent("Width", value: metres(profile.measurements.clearFloorSpaceWidthCentimetres / 100))
+                            LabeledContent("Depth", value: metres(profile.measurements.clearFloorSpaceDepthCentimetres / 100))
                         }
                     }
                 }
@@ -207,7 +206,7 @@ struct RoomSetupReviewView: View {
                             .font(.headline)
                         MeasurementStepper(title: "Centre X", value: $zone.centreXMetres, range: -10...10)
                         MeasurementStepper(title: "Centre Z", value: $zone.centreZMetres, range: -10...10)
-                        MeasurementStepper(title: "Diameter", value: $zone.diameterMetres, range: 0.5...3)
+                        LabeledContent("Diameter", value: metres(profile.measurements.turningSpaceDiameterCentimetres / 100))
                         Button("Remove Turning Zone", systemImage: "trash", role: .destructive) {
                             draft.wrappedValue.turningZones.removeAll { $0.id == zone.id }
                         }
@@ -269,11 +268,26 @@ struct RoomSetupReviewView: View {
 
     private func confirm(_ setup: RoomSetup, inventory: CapturedRoomInventory) {
         do {
-            try store.confirm(setup, inventory: inventory)
+            var normalized = setup
+            let approachWidth = profile.measurements.clearFloorSpaceWidthCentimetres / 100
+            let approachDepth = profile.measurements.clearFloorSpaceDepthCentimetres / 100
+            let turningDiameter = profile.measurements.turningSpaceDiameterCentimetres / 100
+            for index in normalized.objects.indices {
+                normalized.objects[index].approachZone.widthMetres = approachWidth
+                normalized.objects[index].approachZone.depthMetres = approachDepth
+            }
+            for index in normalized.turningZones.indices {
+                normalized.turningZones[index].diameterMetres = turningDiameter
+            }
+            try store.confirm(normalized, inventory: inventory)
             draft = store.roomSetup
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func metres(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(2))) + " m"
     }
 
     private func setBinding(for id: String, in set: Binding<Set<String>>) -> Binding<Bool> {
@@ -323,26 +337,6 @@ private struct MeasurementStepper: View {
     var body: some View {
         Stepper(value: $value, in: range, step: 0.05) {
             LabeledContent(title, value: value.formatted(.number.precision(.fractionLength(2))) + " m")
-        }
-    }
-}
-
-private struct AssessmentEntryView: View {
-    let onClose: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(
-                "Assessment Ready",
-                systemImage: "figure.roll",
-                description: Text("The confirmed Mobility Profile, Accepted Room, and Room Setup are ready for deterministic findings and scores.")
-            )
-            .navigationTitle("Assessment")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Back", systemImage: "chevron.left", action: onClose)
-                }
-            }
         }
     }
 }

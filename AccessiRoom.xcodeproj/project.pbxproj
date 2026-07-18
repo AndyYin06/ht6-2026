@@ -23,6 +23,8 @@
 		F10000000000000000000001 /* MobilityProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000001 /* MobilityProfile.swift */; };
 		F10000000000000000000002 /* MobilityProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* MobilityProfileStore.swift */; };
 		F10000000000000000000003 /* MobilityProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000003 /* MobilityProfileView.swift */; };
+		A10000000000000000000001 /* AssessmentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AssessmentEngine.swift */; };
+		A10000000000000000000002 /* AssessmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AssessmentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +56,8 @@
 		F20000000000000000000001 /* MobilityProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilityProfile.swift; sourceTree = "<group>"; };
 		F20000000000000000000002 /* MobilityProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilityProfileStore.swift; sourceTree = "<group>"; };
 		F20000000000000000000003 /* MobilityProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilityProfileView.swift; sourceTree = "<group>"; };
+		A20000000000000000000001 /* AssessmentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* AssessmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,6 +95,7 @@
 				700000000000000000000006 /* App */,
 				F70000000000000000000001 /* MobilityProfile */,
 				C70000000000000000000001 /* RoomCapture */,
+				A70000000000000000000001 /* Assessment */,
 			);
 			path = AccessiRoom;
 			sourceTree = "<group>";
@@ -152,6 +157,15 @@
 				F20000000000000000000003 /* MobilityProfileView.swift */,
 			);
 			path = MobilityProfile;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000001 /* Assessment */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AssessmentEngine.swift */,
+				A20000000000000000000002 /* AssessmentView.swift */,
+			);
+			path = Assessment;
 			sourceTree = "<group>";
 		};
 		D70000000000000000000001 /* DemoRoomResources */ = {
@@ -275,6 +289,8 @@
 				F10000000000000000000001 /* MobilityProfile.swift in Sources */,
 				F10000000000000000000002 /* MobilityProfileStore.swift in Sources */,
 				F10000000000000000000003 /* MobilityProfileView.swift in Sources */,
+				A10000000000000000000001 /* AssessmentEngine.swift in Sources */,
+				A10000000000000000000002 /* AssessmentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

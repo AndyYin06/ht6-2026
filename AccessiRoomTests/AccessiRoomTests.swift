@@ -2,6 +2,58 @@ import XCTest
 @testable import AccessiRoom
 
 final class AccessiRoomTests: XCTestCase {
+    func testMeasurementToleranceClassifiesConservatively() {
+        XCTAssertEqual(
+            AssessmentEngine.classify(measured: 0.95, required: 0.90, tolerance: 0.05),
+            .meetsNeed
+        )
+        XCTAssertEqual(
+            AssessmentEngine.classify(measured: 0.90, required: 0.90, tolerance: 0.05),
+            .needsVerification
+        )
+        XCTAssertEqual(
+            AssessmentEngine.classify(measured: 0.85, required: 0.90, tolerance: 0.05),
+            .needsVerification
+        )
+        XCTAssertEqual(
+            AssessmentEngine.classify(measured: 0.849, required: 0.90, tolerance: 0.05),
+            .doesNotMeetNeed
+        )
+    }
+
+    func testRequirementAggregationUsesFailureThenVerificationPrecedence() {
+        XCTAssertEqual(AssessmentEngine.aggregate([.meetsNeed, .needsVerification]), .needsVerification)
+        XCTAssertEqual(AssessmentEngine.aggregate([.needsVerification, .doesNotMeetNeed]), .doesNotMeetNeed)
+        XCTAssertEqual(AssessmentEngine.aggregate([.meetsNeed, .meetsNeed]), .meetsNeed)
+    }
+
+    func testEssentialRequirementControlsArrangementStatus() {
+        XCTAssertEqual(
+            AssessmentEngine.status(for: [requirement(outcome: .doesNotMeetNeed, priority: .preference)]),
+            .supportsEssentialNeeds
+        )
+        XCTAssertEqual(
+            AssessmentEngine.status(for: [requirement(outcome: .needsVerification, priority: .essential)]),
+            .needsVerification
+        )
+        XCTAssertEqual(
+            AssessmentEngine.status(for: [requirement(outcome: .doesNotMeetNeed, priority: .essential)]),
+            .doesNotSupportEssentialNeeds
+        )
+    }
+
+    func testScoreReportsBoundsForUnresolvedRequirements() {
+        let score = AssessmentEngine.score(for: [
+            requirement(id: "essential-pass", outcome: .meetsNeed, priority: .essential),
+            requirement(id: "essential-unresolved", outcome: .needsVerification, priority: .essential),
+            requirement(id: "preference-fail", outcome: .doesNotMeetNeed, priority: .preference),
+        ])
+
+        XCTAssertEqual(score.lowerBound, 40)
+        XCTAssertEqual(score.upperBound, 80)
+        XCTAssertTrue(score.isProvisional)
+    }
+
     @MainActor
     func testConfirmedMobilityProfilePersistsAcrossStoreInstances() throws {
         let fixture = try RoomStoreFixture()
@@ -156,6 +208,24 @@ final class AccessiRoomTests: XCTestCase {
 
         XCTAssertNil(store.roomSetup)
         XCTAssertNil(AcceptedRoomStore(rootDirectory: fixture.storeDirectory).roomSetup)
+    }
+
+    private func requirement(
+        id: String = UUID().uuidString,
+        outcome: AnalysisOutcome,
+        priority: MobilityNeedPriority
+    ) -> AssessmentRequirementResult {
+        AssessmentRequirementResult(
+            id: id,
+            kind: .requiredDestination,
+            title: id,
+            priority: priority,
+            outcome: outcome,
+            summary: "",
+            routes: [],
+            findings: [],
+            focusPolygons: []
+        )
     }
 }
 

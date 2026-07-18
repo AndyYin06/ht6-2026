@@ -40,6 +40,7 @@ The initial room-capture slice includes:
 - One on-device Mobility Profile that remains when the Accepted Room is replaced
 - Explicit, revision-bound Operator confirmation; editing invalidates confirmation
 - An optional editable demonstration template sourced to the 2010 ADA Standards
+- A deterministic Observed Arrangement assessment with requirement outcomes, score bounds, evidence coverage, representative routes, and a top-down Accessibility Map
 
 Live scanning is disabled when RoomPlan reports that the current device is unsupported. The Demo Room remains available in the simulator.
 
@@ -114,9 +115,11 @@ Before AccessiRoom can show findings or a score, the Operator must confirm the r
 
 An Access Point is a confirmed door or opening that connects the room to circulation outside it. Closet and cabinet doors are not Access Points merely because they were detected as doors.
 
-Every Access Point must provide usable passage. Every Essential Required Destination must have a suitable route from every Access Point to its Approach Zone.
+Every Access Point must provide usable passage. Every Required Destination, whether Essential or a Preference, must have a suitable route from every Access Point to its Approach Zone; priority determines the consequence of an unsuitable route.
 
 RoomPlan can miss objects or estimate dimensions incorrectly. During setup, the Operator may exclude a false detection. The MVP does not support adding a missed obstacle, correcting captured footprints, or entering manual measurements. These limitations remain visible in the assessment and report.
+
+RoomPlan detection confidence remains visible as evidence provenance but does not change geometry, Measurement Tolerance, outcomes, or scoring. Once the Operator includes a detection during Room Setup Review, the deterministic engine evaluates its captured footprint without inventing a numeric adjustment from the confidence category.
 
 ## Assessment
 
@@ -158,7 +161,7 @@ Arrangement Status is the primary summary. Its precedence is:
 
 Unresolved Preferences do not change a confirmed Supports Essential Needs status, but they make the Layout Score provisional.
 
-The Layout Score is a secondary, deterministic, explainable 0–100 comparison measure:
+The Layout Score is a secondary, deterministic, explainable 0–100 comparison measure. One scored Assessment Requirement is created for each Access Point, Required Destination, Turning Zone, and Custom Mobility Need; individual routes and clearance locations are supporting evidence rather than separately weighted requirements:
 
 - Essential Needs receive 80 points, divided evenly within that group.
 - Preferences receive 20 points, divided evenly within that group.
@@ -253,7 +256,7 @@ The app retains no history after the accepted room is replaced. An explicitly ex
 
 ## Data and Analysis Boundaries
 
-Captured Rooms, Mobility Profiles, arrangements, and assessments are stored and processed on-device. Data leaves the device only through an explicit Operator-initiated export.
+Captured Rooms, Mobility Profiles, confirmed Room Setups, and arrangements are stored and processed on-device. Assessment results are derived on demand from those persisted inputs, and data leaves the device only through an explicit Operator-initiated export.
 
 Authoritative analysis is deterministic and reproducible. A future assistant may explain established results in plain language, but it cannot create, override, or independently score them.
 
@@ -290,6 +293,7 @@ Deferred capabilities include:
 - Multi-room routes
 - Cloud synchronization or hosted analysis
 - Generative explanations or voice assistance
+- Guided Verification and Operator Verification for free-text Custom Mobility Needs
 - Professional certification and building-code verification
 
 ## Product Limitations
@@ -303,6 +307,8 @@ AccessiRoom is a spatial-planning aid. It does not provide:
 - A guarantee that RoomPlan detected every obstacle
 - A guarantee that captured dimensions are exact
 - A guarantee that a person can execute a modeled route
+- An assessment of door-leaf swing, opening force, thresholds, hardware operation, or effective clear width beyond the nominal captured opening
+- Recognition of usable space beneath or within a detected object; every included Captured Object conservatively blocks its full floor-plane footprint
 - A claim that a room is safe or unsafe
 - Photorealistic reconstruction
 
