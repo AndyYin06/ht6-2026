@@ -135,6 +135,7 @@ struct AssessmentMapModel: Equatable, Sendable {
         let polygon: FloorPolygon
         var isProposed = false
         var isRemoved = false
+        var displaysLabel = false
     }
 
     let floor: FloorPolygon
@@ -591,13 +592,21 @@ private struct SpatialRoom {
         minimumPassageWidth = profile.measurements.minimumPassageWidthCentimetres / 100
 
         let doorsAndOpenings = document.doors + document.openings
+        let metadataLabels = CapturedRoomInventory.displayNames(for:
+            document.items(in: document.doors, fallbackCategory: "door")
+                + document.items(in: document.openings, fallbackCategory: "opening")
+                + document.items(in: document.windows, fallbackCategory: "window")
+                + document.items(in: document.walls, fallbackCategory: "wall")
+                + document.items(in: document.objects, fallbackCategory: "object")
+                + document.items(in: document.floors, fallbackCategory: "floor")
+        )
         passages = doorsAndOpenings.map { Self.rectangle(for: $0, depthOverride: 0.30) }
         accessPoints = doorsAndOpenings
             .filter { setup.accessPointIDs.contains($0.identifier) }
             .map {
                 SpatialElement(
                     id: $0.identifier,
-                    label: Self.label(for: $0, fallback: "Access Point"),
+                    label: metadataLabels[$0.identifier] ?? Self.label(for: $0, fallback: "Access Point"),
                     width: $0.dimensions.first ?? 0,
                     polygon: Self.rectangle(for: $0, depthOverride: 0.18)
                 )
@@ -679,7 +688,7 @@ private struct SpatialRoom {
             return Destination(
                 id: "destination-\(objectSetup.id)",
                 objectID: objectSetup.id,
-                label: Self.label(for: element, fallback: "Required Destination"),
+                label: metadataLabels[objectSetup.id] ?? Self.label(for: element, fallback: "Required Destination"),
                 priority: objectSetup.destinationPriority == .essential ? .essential : .preference,
                 zone: Self.approachZone(
                     beside: objectPolygon,
@@ -708,9 +717,10 @@ private struct SpatialRoom {
             obstacles: obstacles.map {
                 AssessmentMapModel.LabelledPolygon(
                     id: $0.id,
-                    label: objectElements[$0.id].map { Self.label(for: $0, fallback: "Object") } ?? "Architectural Feature",
+                    label: metadataLabels[$0.id] ?? "Architectural Feature",
                     polygon: $0.polygon,
-                    isProposed: changes[$0.id]?.hasEffect == true
+                    isProposed: changes[$0.id]?.hasEffect == true,
+                    displaysLabel: metadataLabels[$0.id] != nil
                 )
             } + document.objects.compactMap { element in
                 guard includedObjectIDs.contains(element.identifier),
@@ -718,14 +728,20 @@ private struct SpatialRoom {
                       change.isRemoved else { return nil }
                 return AssessmentMapModel.LabelledPolygon(
                     id: element.identifier,
-                    label: Self.label(for: element, fallback: "Object"),
+                    label: metadataLabels[element.identifier] ?? Self.label(for: element, fallback: "Object"),
                     polygon: Self.rectangle(for: element, applying: change),
                     isProposed: true,
-                    isRemoved: true
+                    isRemoved: true,
+                    displaysLabel: true
                 )
             },
             accessPoints: accessPoints.map {
-                AssessmentMapModel.LabelledPolygon(id: $0.id, label: $0.label, polygon: $0.polygon)
+                AssessmentMapModel.LabelledPolygon(
+                    id: $0.id,
+                    label: $0.label,
+                    polygon: $0.polygon,
+                    displaysLabel: true
+                )
             },
             zones: destinations.map {
                 AssessmentMapModel.LabelledPolygon(id: $0.id, label: $0.label, polygon: $0.zone)

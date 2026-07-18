@@ -8,6 +8,7 @@ struct AssessmentView: View {
     let onClose: () -> Void
 
     @State private var result: AssessmentResult?
+    @State private var observedResult: AssessmentResult?
     @State private var comparison: ArrangementComparison?
     @State private var selectedRequirementID: String?
     @State private var selectedObjectID: String?
@@ -18,6 +19,7 @@ struct AssessmentView: View {
     @State private var errorMessage: String?
 
     private let movableObjects: [CapturedRoomInventory.Item]
+    private let objectDisplayNames: [String: String]
 
     init(
         room: CapturedRoomArtifact,
@@ -34,7 +36,9 @@ struct AssessmentView: View {
         let initial = store.proposedArrangement ?? .empty(roomID: room.id)
         _arrangement = State(initialValue: initial)
         let movableIDs = Set(setup.objects.filter { $0.isIncluded && $0.isMovable }.map(\.id))
-        movableObjects = ((try? CapturedRoomInventory.load(from: room.jsonURL))?.objects ?? [])
+        let roomObjects = (try? CapturedRoomInventory.load(from: room.jsonURL))?.objects ?? []
+        objectDisplayNames = CapturedRoomInventory.displayNames(for: roomObjects)
+        movableObjects = roomObjects
             .filter { movableIDs.contains($0.id) }
         _selectedObjectID = State(initialValue: movableObjects.first?.id)
     }
@@ -297,7 +301,7 @@ struct AssessmentView: View {
     }
 
     private func objectName(_ id: String) -> String {
-        movableObjects.first(where: { $0.id == id })?.displayName ?? id
+        objectDisplayNames[id] ?? id
     }
 
     private func placementDescription(_ change: ProposedObjectChange) -> String {
@@ -373,7 +377,7 @@ struct AssessmentView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Propose a Change")
                         .font(.title2.bold())
-                    Text("Captured placements remain unchanged. Adjustments below describe one hypothetical arrangement.")
+                    Text("Drag a movable object on the map to test one hypothetical arrangement. Captured placements remain unchanged.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -389,9 +393,22 @@ struct AssessmentView: View {
                 )
                 .foregroundStyle(.secondary)
             } else {
+                if let map = observedResult?.map {
+                    ProposalPlacementMap(
+                        map: map,
+                        arrangement: arrangement,
+                        movableObjectIDs: Set(movableObjects.map(\.id)),
+                        selectedObjectID: selectedObjectID,
+                        objectName: objectName,
+                        onSelect: { selectedObjectID = $0 },
+                        onMove: moveObject
+                    )
+                    .frame(height: 360)
+                }
+
                 Picker("Movable Object", selection: $selectedObjectID) {
                     ForEach(movableObjects) { object in
-                        Text(object.displayName).tag(Optional(object.id))
+                        Text(objectName(object.id)).tag(Optional(object.id))
                     }
                 }
 
@@ -412,21 +429,23 @@ struct AssessmentView: View {
                 Text("X \(metres(change.translationXMetres)), Z \(metres(change.translationZMetres))")
                     .monospacedDigit()
             }
-            HStack {
-                adjustmentButton("Move left", systemImage: "arrow.left") {
-                    adjust(object.id) { $0.translationXMetres -= 0.05 }
+            DisclosureGroup("Fine tune position") {
+                HStack {
+                    adjustmentButton("Move left", systemImage: "arrow.left") {
+                        moveObject(object.id, FloorPoint(x: -0.05, z: 0))
+                    }
+                    adjustmentButton("Move right", systemImage: "arrow.right") {
+                        moveObject(object.id, FloorPoint(x: 0.05, z: 0))
+                    }
+                    adjustmentButton("Move forward", systemImage: "arrow.up") {
+                        moveObject(object.id, FloorPoint(x: 0, z: 0.05))
+                    }
+                    adjustmentButton("Move back", systemImage: "arrow.down") {
+                        moveObject(object.id, FloorPoint(x: 0, z: -0.05))
+                    }
                 }
-                adjustmentButton("Move right", systemImage: "arrow.right") {
-                    adjust(object.id) { $0.translationXMetres += 0.05 }
-                }
-                adjustmentButton("Move forward", systemImage: "arrow.up") {
-                    adjust(object.id) { $0.translationZMetres += 0.05 }
-                }
-                adjustmentButton("Move back", systemImage: "arrow.down") {
-                    adjust(object.id) { $0.translationZMetres -= 0.05 }
-                }
+                .labelStyle(.iconOnly)
             }
-            .labelStyle(.iconOnly)
 
             LabeledContent("Proposed rotation") {
                 Text(Measurement(value: change.rotationRadians, unit: UnitAngle.radians)
@@ -443,7 +462,7 @@ struct AssessmentView: View {
             }
             .buttonStyle(.bordered)
 
-            Toggle("Propose removing \(object.displayName)", isOn: Binding(
+            Toggle("Propose removing \(objectName(object.id))", isOn: Binding(
                 get: { change.isRemoved },
                 set: { value in adjust(object.id) { $0.isRemoved = value } }
             ))
@@ -491,6 +510,21 @@ struct AssessmentView: View {
         persistArrangement()
     }
 
+    private func moveObject(_ objectID: String, _ requested: FloorPoint) {
+        guard let map = observedResult?.map else { return }
+        let translation = ProposedPlacementGeometry.constrainedTranslation(
+            for: objectID,
+            requested: requested,
+            map: map,
+            arrangement: arrangement
+        )
+        guard hypot(translation.x, translation.z) > 0.000_001 else { return }
+        adjust(objectID) {
+            $0.translationXMetres += translation.x
+            $0.translationZMetres += translation.z
+        }
+    }
+
     private func undo() {
         guard let previous = undoStack.popLast() else { return }
         redoStack.append(arrangement)
@@ -533,7 +567,7 @@ struct AssessmentView: View {
                     arrangement: nil
                 )
                 guard arrangement.hasChanges else {
-                    return (observed, Optional<ArrangementComparison>.none)
+                    return (observed, observed, Optional<ArrangementComparison>.none)
                 }
                 let proposed = try engine.assess(
                     room: room,
@@ -546,14 +580,15 @@ struct AssessmentView: View {
                     proposed: proposed,
                     arrangement: arrangement
                 )
-                return (proposed, comparison)
+                return (observed, proposed, comparison)
             }.value
             guard self.arrangement == arrangement else { return }
-            result = assessment.0
-            comparison = assessment.1
-            selectedRequirementID = assessment.0.requirements.first(where: { $0.outcome == .doesNotMeetNeed })?.id
-                ?? assessment.0.requirements.first(where: { $0.outcome == .needsVerification })?.id
-                ?? assessment.0.requirements.first?.id
+            observedResult = assessment.0
+            result = assessment.1
+            comparison = assessment.2
+            selectedRequirementID = assessment.1.requirements.first(where: { $0.outcome == .doesNotMeetNeed })?.id
+                ?? assessment.1.requirements.first(where: { $0.outcome == .needsVerification })?.id
+                ?? assessment.1.requirements.first?.id
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -657,6 +692,262 @@ private struct RequirementCard: View {
     }
 }
 
+private struct ProposalPlacementMap: View {
+    let map: AssessmentMapModel
+    let arrangement: ProposedArrangement
+    let movableObjectIDs: Set<String>
+    let selectedObjectID: String?
+    let objectName: (String) -> String
+    let onSelect: (String) -> Void
+    let onMove: (String, FloorPoint) -> Void
+
+    @State private var activeObjectID: String?
+    @State private var dragTranslation = FloorPoint(x: 0, z: 0)
+
+    var body: some View {
+        GeometryReader { proxy in
+            let transform = MapTransform(points: map.floor.points, size: proxy.size, padding: 22)
+
+            Canvas { context, _ in
+                drawPolygon(
+                    map.floor,
+                    color: .secondary.opacity(0.10),
+                    stroke: .secondary,
+                    context: &context,
+                    transform: transform
+                )
+
+                for obstacle in map.obstacles {
+                    let isMovable = movableObjectIDs.contains(obstacle.id)
+                    let isSelected = obstacle.id == selectedObjectID
+                    let isRemoved = arrangement.change(for: obstacle.id)?.isRemoved == true
+                    let polygon = displayedPolygon(for: obstacle)
+                    drawPolygon(
+                        polygon,
+                        color: obstacleColor(
+                            isMovable: isMovable,
+                            isSelected: isSelected,
+                            isRemoved: isRemoved
+                        ),
+                        stroke: isRemoved ? .red : isSelected ? .accentColor : isMovable ? .purple : .gray,
+                        context: &context,
+                        transform: transform,
+                        lineWidth: isSelected ? 4 : isMovable ? 2 : 1
+                    )
+                    if isRemoved {
+                        drawRemovalMark(polygon, context: &context, transform: transform)
+                    }
+                }
+
+                for accessPoint in map.accessPoints {
+                    drawPolygon(
+                        accessPoint.polygon,
+                        color: .blue.opacity(0.38),
+                        stroke: .blue,
+                        context: &context,
+                        transform: transform
+                    )
+                }
+                for zone in map.zones {
+                    if let polygon = displayedZone(for: zone) {
+                        drawPolygon(
+                            polygon,
+                            color: .teal.opacity(0.12),
+                            stroke: .teal.opacity(0.7),
+                            context: &context,
+                            transform: transform
+                        )
+                    }
+                }
+
+                for obstacle in map.obstacles where movableObjectIDs.contains(obstacle.id) {
+                    drawLabel(
+                        objectName(obstacle.id),
+                        at: displayedPolygon(for: obstacle).centre,
+                        isSelected: obstacle.id == selectedObjectID,
+                        context: &context,
+                        transform: transform
+                    )
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(dragGesture(transform: transform))
+            .background(.background, in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(.quaternary)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Label("Drag a highlighted object to move it", systemImage: "hand.draw")
+                    .font(.caption.bold())
+                    .padding(10)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Interactive Proposed Arrangement map")
+        .accessibilityHint("Drag movable objects to reposition them. Fine tune controls are available below the map.")
+    }
+
+    private func dragGesture(transform: MapTransform) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                let objectID: String
+                if let activeObjectID {
+                    objectID = activeObjectID
+                } else {
+                    guard let hitObjectID = hitObject(at: value.startLocation, transform: transform) else {
+                        return
+                    }
+                    objectID = hitObjectID
+                    activeObjectID = hitObjectID
+                    onSelect(hitObjectID)
+                }
+
+                let requested = transform.floorTranslation(for: value.translation)
+                dragTranslation = ProposedPlacementGeometry.constrainedTranslation(
+                    for: objectID,
+                    requested: requested,
+                    map: map,
+                    arrangement: arrangement
+                )
+            }
+            .onEnded { _ in
+                defer {
+                    activeObjectID = nil
+                    dragTranslation = FloorPoint(x: 0, z: 0)
+                }
+                guard let activeObjectID,
+                      hypot(dragTranslation.x, dragTranslation.z) > 0.000_001
+                else { return }
+                onMove(activeObjectID, dragTranslation)
+            }
+    }
+
+    private func hitObject(at location: CGPoint, transform: MapTransform) -> String? {
+        let candidates = map.obstacles.filter {
+            movableObjectIDs.contains($0.id)
+                && arrangement.change(for: $0.id)?.isRemoved != true
+        }
+        let orderedCandidates = candidates.sorted {
+            ($0.id == selectedObjectID ? 0 : 1) < ($1.id == selectedObjectID ? 0 : 1)
+        }
+        let floorPoint = transform.floorPoint(for: location)
+        if let hit = orderedCandidates.first(where: { displayedPolygon(for: $0).contains(floorPoint) }) {
+            return hit.id
+        }
+
+        return orderedCandidates
+            .map { ($0.id, transform.point(displayedPolygon(for: $0).centre)) }
+            .filter { hypot($0.1.x - location.x, $0.1.y - location.y) <= 30 }
+            .min { lhs, rhs in
+                hypot(lhs.1.x - location.x, lhs.1.y - location.y)
+                    < hypot(rhs.1.x - location.x, rhs.1.y - location.y)
+            }?
+            .0
+    }
+
+    private func displayedPolygon(
+        for obstacle: AssessmentMapModel.LabelledPolygon
+    ) -> FloorPolygon {
+        let proposed = ProposedPlacementGeometry.polygon(
+            obstacle.polygon,
+            applying: arrangement.change(for: obstacle.id)
+        )
+        guard obstacle.id == activeObjectID else { return proposed }
+        return ProposedPlacementGeometry.translated(proposed, by: dragTranslation)
+    }
+
+    private func displayedZone(
+        for zone: AssessmentMapModel.LabelledPolygon
+    ) -> FloorPolygon? {
+        let prefix = "destination-"
+        guard zone.id.hasPrefix(prefix) else { return zone.polygon }
+        let objectID = String(zone.id.dropFirst(prefix.count))
+        guard let observedObject = map.obstacles.first(where: { $0.id == objectID }) else {
+            return zone.polygon
+        }
+        let change = arrangement.change(for: objectID)
+        guard change?.isRemoved != true else { return nil }
+        var polygon = ProposedPlacementGeometry.polygon(
+            zone.polygon,
+            applying: change,
+            around: observedObject.polygon.centre
+        )
+        if objectID == activeObjectID {
+            polygon = ProposedPlacementGeometry.translated(polygon, by: dragTranslation)
+        }
+        return polygon
+    }
+
+    private func obstacleColor(isMovable: Bool, isSelected: Bool, isRemoved: Bool) -> Color {
+        if isRemoved { return .red.opacity(0.12) }
+        if isSelected { return .accentColor.opacity(0.58) }
+        if isMovable { return .purple.opacity(0.40) }
+        return .gray.opacity(0.55)
+    }
+
+    private func drawPolygon(
+        _ polygon: FloorPolygon,
+        color: Color,
+        stroke: Color,
+        context: inout GraphicsContext,
+        transform: MapTransform,
+        lineWidth: CGFloat = 1
+    ) {
+        guard let first = polygon.points.first else { return }
+        var path = Path()
+        path.move(to: transform.point(first))
+        for point in polygon.points.dropFirst() { path.addLine(to: transform.point(point)) }
+        path.closeSubpath()
+        context.fill(path, with: .color(color))
+        context.stroke(path, with: .color(stroke), lineWidth: lineWidth)
+    }
+
+    private func drawRemovalMark(
+        _ polygon: FloorPolygon,
+        context: inout GraphicsContext,
+        transform: MapTransform
+    ) {
+        guard polygon.points.count == 4 else { return }
+        var mark = Path()
+        mark.move(to: transform.point(polygon.points[0]))
+        mark.addLine(to: transform.point(polygon.points[2]))
+        mark.move(to: transform.point(polygon.points[1]))
+        mark.addLine(to: transform.point(polygon.points[3]))
+        context.stroke(mark, with: .color(.red), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+    }
+
+    private func drawLabel(
+        _ label: String,
+        at point: FloorPoint,
+        isSelected: Bool,
+        context: inout GraphicsContext,
+        transform: MapTransform
+    ) {
+        let resolvedText = context.resolve(
+            Text(label)
+                .font(.caption2.bold())
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+        )
+        let textSize = resolvedText.measure(in: CGSize(width: 140, height: 40))
+        let centre = transform.point(point)
+        let backgroundRect = CGRect(
+            x: centre.x - textSize.width / 2 - 5,
+            y: centre.y - textSize.height / 2 - 3,
+            width: textSize.width + 10,
+            height: textSize.height + 6
+        )
+        context.fill(
+            Path(roundedRect: backgroundRect, cornerRadius: 5),
+            with: .color(isSelected ? Color.accentColor : Color(.systemBackground).opacity(0.88))
+        )
+        context.draw(resolvedText, at: centre, anchor: .center)
+    }
+}
+
 private struct AccessibilityMap: View {
     let map: AssessmentMapModel
     let requirement: AssessmentRequirementResult?
@@ -710,6 +1001,9 @@ private struct AccessibilityMap: View {
                     let marker = Path(ellipseIn: CGRect(x: centre.x - 6, y: centre.y - 6, width: 12, height: 12))
                     context.fill(marker, with: .color(.red))
                 }
+            }
+            for item in map.obstacles + map.accessPoints + map.zones where item.displaysLabel {
+                drawLabel(item.label, at: item.polygon.centre, context: &context, transform: transform)
             }
         }
         .background(.background, in: RoundedRectangle(cornerRadius: 16))
@@ -768,6 +1062,32 @@ private struct AccessibilityMap: View {
         mark.addLine(to: transform.point(polygon.points[3]))
         context.stroke(mark, with: .color(.red), style: StrokeStyle(lineWidth: 3, lineCap: .round))
     }
+
+    private func drawLabel(
+        _ label: String,
+        at point: FloorPoint,
+        context: inout GraphicsContext,
+        transform: MapTransform
+    ) {
+        let resolvedText = context.resolve(
+            Text(label)
+                .font(.caption2.bold())
+                .foregroundStyle(Color.primary)
+        )
+        let textSize = resolvedText.measure(in: CGSize(width: 140, height: 40))
+        let centre = transform.point(point)
+        let backgroundRect = CGRect(
+            x: centre.x - textSize.width / 2 - 4,
+            y: centre.y - textSize.height / 2 - 2,
+            width: textSize.width + 8,
+            height: textSize.height + 4
+        )
+        context.fill(
+            Path(roundedRect: backgroundRect, cornerRadius: 4),
+            with: .color(Color(.systemBackground).opacity(0.85))
+        )
+        context.draw(resolvedText, at: centre, anchor: .center)
+    }
 }
 
 private struct MapTransform {
@@ -797,6 +1117,20 @@ private struct MapTransform {
         CGPoint(
             x: offsetX + (point.x - minX) * scale,
             y: offsetY + (maxZ - point.z) * scale
+        )
+    }
+
+    func floorPoint(for point: CGPoint) -> FloorPoint {
+        FloorPoint(
+            x: minX + (point.x - offsetX) / scale,
+            z: maxZ - (point.y - offsetY) / scale
+        )
+    }
+
+    func floorTranslation(for translation: CGSize) -> FloorPoint {
+        FloorPoint(
+            x: translation.width / scale,
+            z: -translation.height / scale
         )
     }
 }
