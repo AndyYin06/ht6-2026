@@ -54,6 +54,148 @@ final class AccessiRoomTests: XCTestCase {
         XCTAssertTrue(score.isProvisional)
     }
 
+    func testArrangementComparisonRequiresChangedValidProposal() {
+        let observed = assessmentResult(requirements: [
+            requirement(id: "essential", outcome: .meetsNeed, priority: .essential),
+        ])
+        let invalid = assessmentResult(
+            requirements: observed.requirements,
+            status: .invalidProposal,
+            score: nil
+        )
+        let unchanged = ProposedArrangement.empty(roomID: UUID())
+
+        XCTAssertNil(ArrangementComparisonEngine().compare(
+            observed: observed,
+            proposed: observed,
+            arrangement: unchanged
+        ))
+
+        var changed = unchanged
+        changed.update(objectID: "chair") { $0.translationXMetres = 0.1 }
+        XCTAssertNil(ArrangementComparisonEngine().compare(
+            observed: observed,
+            proposed: invalid,
+            arrangement: changed
+        ))
+    }
+
+    func testImprovedArrangementUsesDocumentedPrecedence() throws {
+        var arrangement = ProposedArrangement.empty(roomID: UUID())
+        arrangement.update(objectID: "chair") { $0.translationXMetres = 0.1 }
+
+        let observed = assessmentResult(
+            requirements: [
+                requirement(id: "e1", outcome: .doesNotMeetNeed, priority: .essential),
+                requirement(id: "e2", outcome: .doesNotMeetNeed, priority: .essential),
+            ],
+            score: LayoutScore(lowerBound: 80, upperBound: 80)
+        )
+        let proposed = assessmentResult(
+            requirements: [
+                requirement(id: "e1", outcome: .doesNotMeetNeed, priority: .essential),
+                requirement(id: "e2", outcome: .meetsNeed, priority: .essential),
+            ],
+            score: LayoutScore(lowerBound: 20, upperBound: 20)
+        )
+
+        let fewerUnmet = try XCTUnwrap(ArrangementComparisonEngine().compare(
+            observed: observed,
+            proposed: proposed,
+            arrangement: arrangement
+        ))
+        XCTAssertTrue(fewerUnmet.isImproved)
+        XCTAssertEqual(fewerUnmet.improvementBasis, .unmetEssentialNeeds)
+
+        let verification = assessmentResult(requirements: [
+            requirement(id: "e1", outcome: .needsVerification, priority: .essential),
+            requirement(id: "e2", outcome: .meetsNeed, priority: .essential),
+        ])
+        let newlyUnmet = assessmentResult(
+            requirements: [
+                requirement(id: "e1", outcome: .doesNotMeetNeed, priority: .essential),
+                requirement(id: "e2", outcome: .meetsNeed, priority: .essential),
+            ],
+            score: LayoutScore(lowerBound: 100, upperBound: 100)
+        )
+        let higherScoreWithWorseStatus = try XCTUnwrap(ArrangementComparisonEngine().compare(
+            observed: verification,
+            proposed: newlyUnmet,
+            arrangement: arrangement
+        ))
+        XCTAssertFalse(higherScoreWithWorseStatus.isImproved)
+        XCTAssertEqual(higherScoreWithWorseStatus.improvementBasis, .status)
+    }
+
+    func testImprovedArrangementUsesScoreThenPreferenceOutcomes() throws {
+        var arrangement = ProposedArrangement.empty(roomID: UUID())
+        arrangement.update(objectID: "chair") { $0.rotationRadians = 0.2 }
+        let essential = requirement(id: "essential", outcome: .meetsNeed, priority: .essential)
+        let observedPreference = requirement(id: "preference", outcome: .needsVerification, priority: .preference)
+        let proposedPreference = requirement(id: "preference", outcome: .meetsNeed, priority: .preference)
+
+        let scoreImprovement = try XCTUnwrap(ArrangementComparisonEngine().compare(
+            observed: assessmentResult(
+                requirements: [essential, observedPreference],
+                score: LayoutScore(lowerBound: 80, upperBound: 100)
+            ),
+            proposed: assessmentResult(
+                requirements: [essential, observedPreference],
+                score: LayoutScore(lowerBound: 90, upperBound: 100)
+            ),
+            arrangement: arrangement
+        ))
+        XCTAssertTrue(scoreImprovement.isImproved)
+        XCTAssertEqual(scoreImprovement.improvementBasis, .layoutScore)
+
+        let preferenceImprovement = try XCTUnwrap(ArrangementComparisonEngine().compare(
+            observed: assessmentResult(
+                requirements: [essential, observedPreference],
+                score: LayoutScore(lowerBound: 100, upperBound: 100)
+            ),
+            proposed: assessmentResult(
+                requirements: [essential, proposedPreference],
+                score: LayoutScore(lowerBound: 100, upperBound: 100)
+            ),
+            arrangement: arrangement
+        ))
+        XCTAssertTrue(preferenceImprovement.isImproved)
+        XCTAssertEqual(preferenceImprovement.improvementBasis, .preferenceOutcomes)
+    }
+
+    func testArrangementComparisonClassifiesFindingChangesAndObjectChanges() throws {
+        var arrangement = ProposedArrangement.empty(roomID: UUID())
+        arrangement.update(objectID: "chair") { $0.translationZMetres = 0.2 }
+        arrangement.update(objectID: "table") { $0.isRemoved = true }
+        let observed = assessmentResult(requirements: [
+            requirement(
+                id: "essential",
+                outcome: .doesNotMeetNeed,
+                priority: .essential,
+                findings: [finding(id: "resolved"), finding(id: "remaining")]
+            ),
+        ])
+        let proposed = assessmentResult(requirements: [
+            requirement(
+                id: "essential",
+                outcome: .doesNotMeetNeed,
+                priority: .essential,
+                findings: [finding(id: "remaining"), finding(id: "new")]
+            ),
+        ])
+
+        let comparison = try XCTUnwrap(ArrangementComparisonEngine().compare(
+            observed: observed,
+            proposed: proposed,
+            arrangement: arrangement
+        ))
+        XCTAssertEqual(comparison.changedPlacements.map(\.id), ["chair"])
+        XCTAssertEqual(comparison.proposedRemovals.map(\.id), ["table"])
+        XCTAssertEqual(comparison.resolvedFindings.map(\.id), ["resolved"])
+        XCTAssertEqual(comparison.remainingFindings.map(\.id), ["remaining"])
+        XCTAssertEqual(comparison.newlyIntroducedFindings.map(\.id), ["new"])
+    }
+
     @MainActor
     func testConfirmedMobilityProfilePersistsAcrossStoreInstances() throws {
         let fixture = try RoomStoreFixture()
@@ -210,10 +352,94 @@ final class AccessiRoomTests: XCTestCase {
         XCTAssertNil(AcceptedRoomStore(rootDirectory: fixture.storeDirectory).roomSetup)
     }
 
+    @MainActor
+    func testProposedArrangementPersistsAndIsClearedWithAcceptedRoom() throws {
+        let fixture = try RoomStoreFixture()
+        defer { fixture.remove() }
+
+        let store = AcceptedRoomStore(rootDirectory: fixture.storeDirectory)
+        try store.accept(fixture.makeRoomPlanCandidate(contents: "first"))
+        let room = try XCTUnwrap(store.acceptedRoom)
+        let inventory = try CapturedRoomInventory.load(from: room.jsonURL)
+        var setup = RoomSetup.draft(roomID: room.id, inventory: inventory, measurements: nil)
+        setup.accessPointIDs.insert(try XCTUnwrap(inventory.accessPointCandidates.first?.id))
+        setup.objects[0].isMovable = true
+        setup.objects[0].isRequiredDestination = true
+        try store.confirm(setup, inventory: inventory)
+
+        var arrangement = ProposedArrangement.empty(roomID: room.id)
+        arrangement.update(objectID: "chair-1") {
+            $0.translationXMetres = 0.25
+            $0.rotationRadians = .pi / 4
+        }
+        try store.save(arrangement)
+
+        let reloaded = AcceptedRoomStore(rootDirectory: fixture.storeDirectory)
+        XCTAssertEqual(reloaded.proposedArrangement, arrangement)
+
+        try store.accept(fixture.makeRoomPlanCandidate(contents: "second"))
+        XCTAssertNil(store.proposedArrangement)
+        XCTAssertNil(AcceptedRoomStore(rootDirectory: fixture.storeDirectory).proposedArrangement)
+    }
+
+    @MainActor
+    func testResettingProposalRemovesPersistedArrangement() throws {
+        let fixture = try RoomStoreFixture()
+        defer { fixture.remove() }
+
+        let store = AcceptedRoomStore(rootDirectory: fixture.storeDirectory)
+        try store.accept(fixture.makeRoomPlanCandidate(contents: "room"))
+        let room = try XCTUnwrap(store.acceptedRoom)
+        let inventory = try CapturedRoomInventory.load(from: room.jsonURL)
+        var setup = RoomSetup.draft(roomID: room.id, inventory: inventory, measurements: nil)
+        setup.accessPointIDs.insert("door-1")
+        setup.objects[0].isMovable = true
+        setup.objects[0].isRequiredDestination = true
+        try store.confirm(setup, inventory: inventory)
+
+        var arrangement = ProposedArrangement.empty(roomID: room.id)
+        arrangement.update(objectID: "chair-1") { $0.isRemoved = true }
+        try store.save(arrangement)
+        try store.save(.empty(roomID: room.id))
+
+        XCTAssertNil(store.proposedArrangement)
+        XCTAssertNil(AcceptedRoomStore(rootDirectory: fixture.storeDirectory).proposedArrangement)
+    }
+
+    @MainActor
+    func testOverlappingProposedPlacementIsInvalidAndHasNoScore() throws {
+        let fixture = try RoomStoreFixture()
+        defer { fixture.remove() }
+
+        let store = AcceptedRoomStore(rootDirectory: fixture.storeDirectory)
+        try store.accept(fixture.makeArrangementCandidate())
+        let room = try XCTUnwrap(store.acceptedRoom)
+        let inventory = try CapturedRoomInventory.load(from: room.jsonURL)
+        var setup = RoomSetup.draft(roomID: room.id, inventory: inventory, measurements: nil)
+        setup.accessPointIDs.insert("door-1")
+        setup.objects[0].isMovable = true
+        setup.objects[1].isRequiredDestination = true
+        try store.confirm(setup, inventory: inventory)
+
+        var arrangement = ProposedArrangement.empty(roomID: room.id)
+        arrangement.update(objectID: "chair-1") { $0.translationXMetres = 2 }
+        let result = try AssessmentEngine().assess(
+            room: room,
+            profile: .customDraft(),
+            setup: try XCTUnwrap(store.roomSetup),
+            arrangement: arrangement
+        )
+
+        XCTAssertEqual(result.status, .invalidProposal)
+        XCTAssertNil(result.score)
+        XCTAssertTrue(result.conflicts.contains { $0.title == "Objects overlap" })
+    }
+
     private func requirement(
         id: String = UUID().uuidString,
         outcome: AnalysisOutcome,
-        priority: MobilityNeedPriority
+        priority: MobilityNeedPriority,
+        findings: [AssessmentFinding] = []
     ) -> AssessmentRequirementResult {
         AssessmentRequirementResult(
             id: id,
@@ -223,8 +449,40 @@ final class AccessiRoomTests: XCTestCase {
             outcome: outcome,
             summary: "",
             routes: [],
-            findings: [],
+            findings: findings,
             focusPolygons: []
+        )
+    }
+
+    private func finding(id: String) -> AssessmentFinding {
+        AssessmentFinding(
+            id: id,
+            title: id,
+            details: "",
+            outcome: .doesNotMeetNeed,
+            location: nil
+        )
+    }
+
+    private func assessmentResult(
+        requirements: [AssessmentRequirementResult],
+        status: ArrangementStatus? = nil,
+        score: LayoutScore? = nil
+    ) -> AssessmentResult {
+        AssessmentResult(
+            engineVersion: AssessmentEngine.engineVersion,
+            status: status ?? AssessmentEngine.status(for: requirements),
+            score: score ?? AssessmentEngine.score(for: requirements),
+            conflicts: [],
+            determinedRequirementCount: requirements.filter { $0.outcome != .needsVerification }.count,
+            totalRequirementCount: requirements.count,
+            requirements: requirements,
+            map: AssessmentMapModel(
+                floor: FloorPolygon(points: []),
+                obstacles: [],
+                accessPoints: [],
+                zones: []
+            )
         )
     }
 }
@@ -284,6 +542,46 @@ private struct RoomStoreFixture {
             "category": {"chair": {}},
             "confidence": {"high": {}},
             "dimensions": [0.6, 1.0, 0.6]
+          }]
+        }
+        """
+        try Data(json.utf8).write(to: candidate.jsonURL, options: .atomic)
+        return candidate
+    }
+
+    func makeArrangementCandidate() throws -> CapturedRoomArtifact {
+        let candidate = try makeCandidate(source: .demo, contents: "arrangement")
+        let identity = "[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]"
+        let json = """
+        {
+          "floors": [{
+            "identifier": "floor-1",
+            "category": {"floor": {}},
+            "polygonCorners": [[-3,0,-3],[3,0,-3],[3,0,3],[-3,0,3]],
+            "transform": \(identity)
+          }],
+          "doors": [{
+            "identifier": "door-1",
+            "category": {"door": {}},
+            "dimensions": [1.2,2.0,0],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-3,1]
+          }],
+          "walls": [{
+            "identifier": "wall-1",
+            "category": {"wall": {}},
+            "dimensions": [6.0,2.4,0],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-3,1]
+          }],
+          "objects": [{
+            "identifier": "chair-1",
+            "category": {"chair": {}},
+            "dimensions": [0.8,1.0,0.8],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, -1,0,0,1]
+          },{
+            "identifier": "table-1",
+            "category": {"table": {}},
+            "dimensions": [0.8,1.0,0.8],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 1,0,0,1]
           }]
         }
         """

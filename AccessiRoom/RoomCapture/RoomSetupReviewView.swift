@@ -67,6 +67,7 @@ struct RoomSetupReviewView: View {
                     room: room,
                     profile: profile,
                     setup: setup,
+                    store: store,
                     onClose: { showingAssessment = false }
                 )
             }

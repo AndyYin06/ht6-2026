@@ -25,6 +25,8 @@
 		F10000000000000000000003 /* MobilityProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000003 /* MobilityProfileView.swift */; };
 		A10000000000000000000001 /* AssessmentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AssessmentEngine.swift */; };
 		A10000000000000000000002 /* AssessmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AssessmentView.swift */; };
+		A10000000000000000000003 /* ProposedArrangement.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ProposedArrangement.swift */; };
+		A10000000000000000000004 /* ArrangementComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ArrangementComparison.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +60,8 @@
 		F20000000000000000000003 /* MobilityProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilityProfileView.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* AssessmentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentEngine.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* AssessmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* ProposedArrangement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposedArrangement.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* ArrangementComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrangementComparison.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,8 +166,10 @@
 		A70000000000000000000001 /* Assessment */ = {
 			isa = PBXGroup;
 			children = (
+				A20000000000000000000004 /* ArrangementComparison.swift */,
 				A20000000000000000000001 /* AssessmentEngine.swift */,
 				A20000000000000000000002 /* AssessmentView.swift */,
+				A20000000000000000000003 /* ProposedArrangement.swift */,
 			);
 			path = Assessment;
 			sourceTree = "<group>";
@@ -291,6 +297,8 @@
 				F10000000000000000000003 /* MobilityProfileView.swift in Sources */,
 				A10000000000000000000001 /* AssessmentEngine.swift in Sources */,
 				A10000000000000000000002 /* AssessmentView.swift in Sources */,
+				A10000000000000000000003 /* ProposedArrangement.swift in Sources */,
+				A10000000000000000000004 /* ArrangementComparison.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

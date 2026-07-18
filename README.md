@@ -41,6 +41,8 @@ The initial room-capture slice includes:
 - Explicit, revision-bound Operator confirmation; editing invalidates confirmation
 - An optional editable demonstration template sourced to the 2010 ADA Standards
 - A deterministic Observed Arrangement assessment with requirement outcomes, score bounds, evidence coverage, representative routes, and a top-down Accessibility Map
+- One persistent Proposed Arrangement with move, rotate, removal, undo, redo, and reset controls
+- Automatic deterministic reassessment after proposal edits, including Arrangement Conflict detection and score suppression for invalid proposals
 
 Live scanning is disabled when RoomPlan reports that the current device is unsupported. The Demo Room remains available in the simulator.
 

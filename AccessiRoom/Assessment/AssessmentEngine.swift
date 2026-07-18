@@ -102,12 +102,14 @@ struct AssessmentRequirementResult: Identifiable, Equatable, Sendable {
 }
 
 enum ArrangementStatus: String, Codable, Sendable {
+    case invalidProposal
     case doesNotSupportEssentialNeeds
     case needsVerification
     case supportsEssentialNeeds
 
     var title: String {
         switch self {
+        case .invalidProposal: "Invalid Proposal"
         case .doesNotSupportEssentialNeeds: "Does Not Support Essential Needs"
         case .needsVerification: "Needs Verification"
         case .supportsEssentialNeeds: "Supports Essential Needs"
@@ -130,6 +132,8 @@ struct AssessmentMapModel: Equatable, Sendable {
         let id: String
         let label: String
         let polygon: FloorPolygon
+        var isProposed = false
+        var isRemoved = false
     }
 
     let floor: FloorPolygon
@@ -138,10 +142,18 @@ struct AssessmentMapModel: Equatable, Sendable {
     let zones: [LabelledPolygon]
 }
 
+struct ArrangementConflict: Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let details: String
+    let objectIDs: [String]
+}
+
 struct AssessmentResult: Equatable, Sendable {
     let engineVersion: String
     let status: ArrangementStatus
-    let score: LayoutScore
+    let score: LayoutScore?
+    let conflicts: [ArrangementConflict]
     let determinedRequirementCount: Int
     let totalRequirementCount: Int
     let requirements: [AssessmentRequirementResult]
@@ -155,6 +167,8 @@ struct AssessmentResult: Equatable, Sendable {
 enum AssessmentEngineError: LocalizedError, Sendable {
     case setupDoesNotMatchRoom
     case roomSetupNotConfirmed
+    case arrangementDoesNotMatchRoom
+    case arrangementContainsNonMovableObject
 
     var errorDescription: String? {
         switch self {
@@ -162,26 +176,43 @@ enum AssessmentEngineError: LocalizedError, Sendable {
             "The confirmed Room Setup does not belong to this Accepted Room."
         case .roomSetupNotConfirmed:
             "Confirm the Room Setup before running the assessment."
+        case .arrangementDoesNotMatchRoom:
+            "The Proposed Arrangement does not belong to this Accepted Room."
+        case .arrangementContainsNonMovableObject:
+            "The Proposed Arrangement changes an object that was not confirmed as movable."
         }
     }
 }
 
 struct AssessmentEngine {
-    static let engineVersion = "barebones-1"
+    static let engineVersion = "arrangements-2"
     static let measurementToleranceMetres = 0.05
     static let preferredGridSizeMetres = 0.05
 
     func assess(
         room: CapturedRoomArtifact,
         profile: MobilityProfile,
-        setup: RoomSetup
+        setup: RoomSetup,
+        arrangement: ProposedArrangement? = nil
     ) throws -> AssessmentResult {
         guard setup.roomID == room.id else { throw AssessmentEngineError.setupDoesNotMatchRoom }
         guard setup.isConfirmed else { throw AssessmentEngineError.roomSetupNotConfirmed }
+        guard arrangement == nil || arrangement?.roomID == room.id else {
+            throw AssessmentEngineError.arrangementDoesNotMatchRoom
+        }
+        let movableObjectIDs = Set(setup.objects.filter { $0.isIncluded && $0.isMovable }.map(\.id))
+        guard arrangement?.changes.allSatisfy({ movableObjectIDs.contains($0.id) }) != false else {
+            throw AssessmentEngineError.arrangementContainsNonMovableObject
+        }
 
         let data = try Data(contentsOf: room.jsonURL)
         let document = try JSONDecoder().decode(RoomPlanDocument.self, from: data)
-        let spatialRoom = SpatialRoom(document: document, setup: setup, profile: profile)
+        let spatialRoom = SpatialRoom(
+            document: document,
+            setup: setup,
+            profile: profile,
+            arrangement: arrangement
+        )
         let grid = NavigationGrid(room: spatialRoom)
 
         var requirements: [AssessmentRequirementResult] = []
@@ -223,6 +254,26 @@ struct AssessmentEngine {
         }
 
         for destination in spatialRoom.destinations {
+            if destination.isRemoved {
+                requirements.append(AssessmentRequirementResult(
+                    id: destination.id,
+                    kind: .requiredDestination,
+                    title: destination.label,
+                    priority: destination.priority,
+                    outcome: .doesNotMeetNeed,
+                    summary: "The Required Destination is proposed for removal, so it cannot support this need.",
+                    routes: [],
+                    findings: [AssessmentFinding(
+                        id: "removed-\(destination.objectID)",
+                        title: "Required Destination proposed for removal",
+                        details: "Restore this object or change the confirmed Room Setup before treating this destination as no longer required.",
+                        outcome: .doesNotMeetNeed,
+                        location: destination.zone.centre
+                    )],
+                    focusPolygons: [destination.zone]
+                ))
+                continue
+            }
             let zoneOutcome = spatialRoom.floorIsComplete
                 ? spatialRoom.areaOutcome(for: destination.zone, excludingObstacleID: destination.objectID)
                 : .needsVerification
@@ -396,13 +447,16 @@ struct AssessmentEngine {
             ))
         }
 
-        let status = Self.status(for: requirements)
-        let score = Self.score(for: requirements)
+        let status = spatialRoom.conflicts.isEmpty
+            ? Self.status(for: requirements)
+            : .invalidProposal
+        let score = spatialRoom.conflicts.isEmpty ? Self.score(for: requirements) : nil
         let determined = requirements.filter { $0.outcome != .needsVerification }.count
         return AssessmentResult(
             engineVersion: Self.engineVersion,
             status: status,
             score: score,
+            conflicts: spatialRoom.conflicts,
             determinedRequirementCount: determined,
             totalRequirementCount: requirements.count,
             requirements: requirements,
@@ -492,6 +546,7 @@ private struct SpatialRoom {
         let label: String
         let priority: MobilityNeedPriority
         let zone: FloorPolygon
+        let isRemoved: Bool
     }
 
     struct TurningZone {
@@ -516,8 +571,14 @@ private struct SpatialRoom {
     let turningZones: [TurningZone]
     let minimumPassageWidth: Double
     let mapModel: AssessmentMapModel
+    let conflicts: [ArrangementConflict]
 
-    init(document: RoomPlanDocument, setup: RoomSetup, profile: MobilityProfile) {
+    init(
+        document: RoomPlanDocument,
+        setup: RoomSetup,
+        profile: MobilityProfile,
+        arrangement: ProposedArrangement?
+    ) {
         let floorElement = document.floors.first
         let resolvedFloor = floorElement.map(Self.floorPolygon) ?? FloorPolygon(points: [])
         floor = resolvedFloor
@@ -548,12 +609,58 @@ private struct SpatialRoom {
             }
         let includedObjectIDs = Set(setup.objects.filter(\.isIncluded).map(\.id))
         let objectElements = Dictionary(uniqueKeysWithValues: document.objects.map { ($0.identifier, $0) })
+        let changes = Dictionary(uniqueKeysWithValues: (arrangement?.changes ?? []).map { ($0.id, $0) })
         let objectObstacles = document.objects
-            .filter { includedObjectIDs.contains($0.identifier) }
+            .filter { includedObjectIDs.contains($0.identifier) && changes[$0.identifier]?.isRemoved != true }
             .map {
-                Obstacle(id: $0.identifier, polygon: Self.rectangle(for: $0), kind: .object)
+                Obstacle(
+                    id: $0.identifier,
+                    polygon: Self.rectangle(for: $0, applying: changes[$0.identifier]),
+                    kind: .object
+                )
             }
         obstacles = wallObstacles + objectObstacles
+
+        if arrangement?.hasChanges == true {
+            var foundConflicts: [ArrangementConflict] = []
+            let changedObjectIDs = Set(changes.values.filter(\.hasEffect).map(\.id))
+            for object in objectObstacles where changedObjectIDs.contains(object.id) {
+                if floorIsComplete, !object.polygon.points.allSatisfy(resolvedFloor.contains) {
+                    foundConflicts.append(ArrangementConflict(
+                        id: "outside-floor-\(object.id)",
+                        title: "Object leaves the captured floor",
+                        details: "Move the proposed object fully inside the captured room boundary.",
+                        objectIDs: [object.id]
+                    ))
+                }
+                for wall in wallObstacles where Self.polygonsIntersect(object.polygon, wall.polygon) {
+                    foundConflicts.append(ArrangementConflict(
+                        id: "wall-\(object.id)-\(wall.id)",
+                        title: "Object crosses an Architectural Feature",
+                        details: "Move the proposed object so it no longer overlaps the captured wall or fixed feature.",
+                        objectIDs: [object.id]
+                    ))
+                }
+            }
+            for firstIndex in objectObstacles.indices {
+                for secondIndex in objectObstacles.indices where secondIndex > firstIndex {
+                    let first = objectObstacles[firstIndex]
+                    let second = objectObstacles[secondIndex]
+                    if (changedObjectIDs.contains(first.id) || changedObjectIDs.contains(second.id)),
+                       Self.polygonsIntersect(first.polygon, second.polygon) {
+                        foundConflicts.append(ArrangementConflict(
+                            id: "objects-\(first.id)-\(second.id)",
+                            title: "Objects overlap",
+                            details: "Separate the proposed object placements before assessing this arrangement.",
+                            objectIDs: [first.id, second.id]
+                        ))
+                    }
+                }
+            }
+            conflicts = foundConflicts
+        } else {
+            conflicts = []
+        }
 
         let approachWidth = profile.measurements.clearFloorSpaceWidthCentimetres / 100
         let approachDepth = profile.measurements.clearFloorSpaceDepthCentimetres / 100
@@ -562,7 +669,8 @@ private struct SpatialRoom {
                   objectSetup.isRequiredDestination,
                   let element = objectElements[objectSetup.id]
             else { return nil }
-            let objectPolygon = Self.rectangle(for: element)
+            let change = changes[objectSetup.id]
+            let objectPolygon = Self.rectangle(for: element, applying: change)
             return Destination(
                 id: "destination-\(objectSetup.id)",
                 objectID: objectSetup.id,
@@ -573,7 +681,8 @@ private struct SpatialRoom {
                     side: objectSetup.approachZone.side,
                     width: approachWidth,
                     depth: approachDepth
-                )
+                ),
+                isRemoved: change?.isRemoved == true
             )
         }
 
@@ -592,7 +701,23 @@ private struct SpatialRoom {
         mapModel = AssessmentMapModel(
             floor: resolvedFloor,
             obstacles: obstacles.map {
-                AssessmentMapModel.LabelledPolygon(id: $0.id, label: "Obstacle", polygon: $0.polygon)
+                AssessmentMapModel.LabelledPolygon(
+                    id: $0.id,
+                    label: objectElements[$0.id].map { Self.label(for: $0, fallback: "Object") } ?? "Architectural Feature",
+                    polygon: $0.polygon,
+                    isProposed: changes[$0.id]?.hasEffect == true
+                )
+            } + document.objects.compactMap { element in
+                guard includedObjectIDs.contains(element.identifier),
+                      let change = changes[element.identifier],
+                      change.isRemoved else { return nil }
+                return AssessmentMapModel.LabelledPolygon(
+                    id: element.identifier,
+                    label: Self.label(for: element, fallback: "Object"),
+                    polygon: Self.rectangle(for: element, applying: change),
+                    isProposed: true,
+                    isRemoved: true
+                )
             },
             accessPoints: accessPoints.map {
                 AssessmentMapModel.LabelledPolygon(id: $0.id, label: $0.label, polygon: $0.polygon)
@@ -655,7 +780,8 @@ private struct SpatialRoom {
 
     private static func rectangle(
         for element: RoomPlanDocument.Element,
-        depthOverride: Double? = nil
+        depthOverride: Double? = nil,
+        applying change: ProposedObjectChange? = nil
     ) -> FloorPolygon {
         let width = max(element.dimensions.first ?? 0.05, 0.02)
         let rawDepth = element.dimensions.count > 2 ? element.dimensions[2] : 0
@@ -666,7 +792,19 @@ private struct SpatialRoom {
             [width / 2, 0, depth / 2],
             [-width / 2, 0, depth / 2],
         ]
-        return FloorPolygon(points: local.map { transform(point: $0, with: element.transform) })
+        let captured = FloorPolygon(points: local.map { transform(point: $0, with: element.transform) })
+        guard let change, change.hasEffect else { return captured }
+        let centre = captured.centre
+        let cosine = cos(change.rotationRadians)
+        let sine = sin(change.rotationRadians)
+        return FloorPolygon(points: captured.points.map { point in
+            let localX = point.x - centre.x
+            let localZ = point.z - centre.z
+            return FloorPoint(
+                x: centre.x + localX * cosine - localZ * sine + change.translationXMetres,
+                z: centre.z + localX * sine + localZ * cosine + change.translationZMetres
+            )
+        })
     }
 
     private static func transform(point: [Double], with matrix: [Double]) -> FloorPoint {
@@ -794,11 +932,27 @@ private struct SpatialRoom {
         func cross(_ p: FloorPoint, _ q: FloorPoint, _ r: FloorPoint) -> Double {
             (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x)
         }
+        func contains(_ point: FloorPoint, onStart start: FloorPoint, end: FloorPoint) -> Bool {
+            let epsilon = 0.000_001
+            return point.x >= min(start.x, end.x) - epsilon
+                && point.x <= max(start.x, end.x) + epsilon
+                && point.z >= min(start.z, end.z) - epsilon
+                && point.z <= max(start.z, end.z) + epsilon
+        }
         let abC = cross(a, b, c)
         let abD = cross(a, b, d)
         let cdA = cross(c, d, a)
         let cdB = cross(c, d, b)
-        return abC * abD <= 0 && cdA * cdB <= 0
+        let epsilon = 0.000_001
+        if ((abC > epsilon && abD < -epsilon) || (abC < -epsilon && abD > epsilon)),
+           ((cdA > epsilon && cdB < -epsilon) || (cdA < -epsilon && cdB > epsilon)) {
+            return true
+        }
+        if abs(abC) <= epsilon, contains(c, onStart: a, end: b) { return true }
+        if abs(abD) <= epsilon, contains(d, onStart: a, end: b) { return true }
+        if abs(cdA) <= epsilon, contains(a, onStart: c, end: d) { return true }
+        if abs(cdB) <= epsilon, contains(b, onStart: c, end: d) { return true }
+        return false
     }
 }
 

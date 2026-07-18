@@ -5,6 +5,7 @@ import Foundation
 final class AcceptedRoomStore: ObservableObject {
     @Published private(set) var acceptedRoom: CapturedRoomArtifact?
     @Published private(set) var roomSetup: RoomSetup?
+    @Published private(set) var proposedArrangement: ProposedArrangement?
 
     private struct Manifest: Codable {
         let id: UUID
@@ -35,6 +36,9 @@ final class AcceptedRoomStore: ObservableObject {
         )
         roomSetup = acceptedRoom.flatMap {
             Self.loadRoomSetup(for: $0, fileManager: fileManager)
+        }
+        proposedArrangement = acceptedRoom.flatMap {
+            Self.loadProposedArrangement(for: $0, fileManager: fileManager)
         }
     }
 
@@ -79,6 +83,7 @@ final class AcceptedRoomStore: ObservableObject {
                 disposableDirectory: nil
             )
             roomSetup = nil
+            proposedArrangement = nil
             removeUnacceptedRoomDirectories(keepingDirectoryNamed: directoryName)
         } catch {
             try? fileManager.removeItem(at: acceptedDirectory)
@@ -104,6 +109,43 @@ final class AcceptedRoomStore: ObservableObject {
             options: [.atomic, .completeFileProtection]
         )
         roomSetup = confirmed
+        let movableObjectIDs = Set(
+            confirmed.objects.filter { $0.isIncluded && $0.isMovable }.map(\.id)
+        )
+        if let proposedArrangement,
+           !proposedArrangement.changes.allSatisfy({ movableObjectIDs.contains($0.id) }) {
+            try? fileManager.removeItem(
+                at: acceptedRoom.jsonURL.deletingLastPathComponent()
+                    .appending(path: "ProposedArrangement.json")
+            )
+            self.proposedArrangement = nil
+        }
+    }
+
+    func save(_ arrangement: ProposedArrangement) throws {
+        guard let acceptedRoom, arrangement.roomID == acceptedRoom.id else {
+            throw AcceptedRoomStoreError.arrangementDoesNotMatchAcceptedRoom
+        }
+        let movableObjectIDs = Set(
+            roomSetup?.objects.filter { $0.isIncluded && $0.isMovable }.map(\.id) ?? []
+        )
+        guard arrangement.changes.allSatisfy({ movableObjectIDs.contains($0.id) }) else {
+            throw AcceptedRoomStoreError.arrangementContainsNonMovableObject
+        }
+        let url = acceptedRoom.jsonURL.deletingLastPathComponent()
+            .appending(path: "ProposedArrangement.json")
+        if arrangement.hasChanges {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(arrangement).write(
+                to: url,
+                options: [.atomic, .completeFileProtection]
+            )
+            proposedArrangement = arrangement
+        } else {
+            try? fileManager.removeItem(at: url)
+            proposedArrangement = nil
+        }
     }
 
     private func excludeStorageFromDeviceBackup() throws {
@@ -174,16 +216,36 @@ final class AcceptedRoomStore: ObservableObject {
               setup.roomID == room.id else { return nil }
         return setup
     }
+
+    private static func loadProposedArrangement(
+        for room: CapturedRoomArtifact,
+        fileManager: FileManager
+    ) -> ProposedArrangement? {
+        let url = room.jsonURL.deletingLastPathComponent()
+            .appending(path: "ProposedArrangement.json")
+        guard fileManager.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let arrangement = try? JSONDecoder().decode(ProposedArrangement.self, from: data),
+              arrangement.roomID == room.id,
+              arrangement.hasChanges else { return nil }
+        return arrangement
+    }
 }
 
 enum AcceptedRoomStoreError: LocalizedError {
     case setupDoesNotMatchAcceptedRoom
+    case arrangementDoesNotMatchAcceptedRoom
+    case arrangementContainsNonMovableObject
     case invalidSetup(String)
 
     var errorDescription: String? {
         switch self {
         case .setupDoesNotMatchAcceptedRoom:
             "This setup belongs to a different Accepted Room."
+        case .arrangementDoesNotMatchAcceptedRoom:
+            "This Proposed Arrangement belongs to a different Accepted Room."
+        case .arrangementContainsNonMovableObject:
+            "Only objects confirmed as movable may receive a Proposed Placement or Proposed Removal."
         case .invalidSetup(let message):
             message
         }
