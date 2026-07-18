@@ -1,27 +1,27 @@
 import Foundation
 
-enum MobilityNeedPriority: String, Codable, CaseIterable, Identifiable {
+enum MobilityNeedPriority: String, Codable, CaseIterable, Identifiable, Sendable {
     case essential
     case preference
 
     var id: String { rawValue }
 }
 
-struct CustomMobilityNeed: Codable, Equatable, Identifiable {
+struct CustomMobilityNeed: Codable, Equatable, Identifiable, Sendable {
     var id: UUID = UUID()
     var title: String
     var details: String
     var priority: MobilityNeedPriority
 }
 
-struct MobilityMeasurements: Codable, Equatable {
+struct MobilityMeasurements: Codable, Equatable, Sendable {
     var minimumPassageWidthCentimetres: Double
     var turningSpaceDiameterCentimetres: Double
     var clearFloorSpaceWidthCentimetres: Double
     var clearFloorSpaceDepthCentimetres: Double
 }
 
-struct ProfileTemplateReference: Codable, Equatable {
+struct ProfileTemplateReference: Codable, Equatable, Sendable {
     let name: String
     let source: String
     let jurisdiction: String
@@ -30,7 +30,7 @@ struct ProfileTemplateReference: Codable, Equatable {
     let sourceURL: URL
 }
 
-struct MobilityProfile: Codable, Equatable, Identifiable {
+struct MobilityProfile: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var revision: Int
     var occupantName: String
@@ -78,13 +78,7 @@ struct MobilityProfile: Codable, Equatable, Identifiable {
                 clearFloorSpaceWidthCentimetres: 76,
                 clearFloorSpaceDepthCentimetres: 122
             ),
-            customNeeds: [
-                CustomMobilityNeed(
-                    title: "Maintain the configured clear passage width",
-                    details: "Apply the passage measurement throughout movement routes.",
-                    priority: .essential
-                )
-            ],
+            customNeeds: [],
             templateReference: ProfileTemplateReference(
                 name: "2010 ADA demonstration starting point",
                 source: "U.S. Department of Justice, 2010 ADA Standards for Accessible Design",

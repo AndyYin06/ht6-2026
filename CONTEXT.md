@@ -28,9 +28,29 @@ _Avoid_: Room Occupant, account holder, clinician
 The Room Occupant's known requirements for moving through and using a room, including any space required by their mobility device.
 _Avoid_: Disability type, universal accessibility requirements
 
+**Custom Mobility Need**:
+An Operator-authored Essential Need or Preference expressed without a structured measurement rule. It remains Needs Verification in automatic analysis until supported by measurable evidence or explicit verification.
+_Avoid_: AI-interpreted rule, inferred requirement, free-text score adjustment
+
+**Guided Verification**:
+An assistant-led workflow that helps the Operator identify and collect the observations or measurements needed to resolve a Custom Mobility Need. The assistant structures the inquiry but does not choose or predict the outcome.
+_Avoid_: AI assessment, specialist verdict, automatic verification
+
+**Operator Verification**:
+An explicitly recorded Operator determination about a Custom Mobility Need, supported by disclosed observations or measurements and distinguished from outcomes derived from captured spatial evidence.
+_Avoid_: AI decision, manual score override, assumed confirmation
+
 **Mobility Profile**:
 The measurable Essential Needs and Preferences used to evaluate a room for one Room Occupant, such as required passage width, turning space, and clear floor space. Room-specific destinations and zones are configured later during Room Setup Review.
 _Avoid_: Accessibility category, disability label, generic user type
+
+**Clearance Footprint**:
+The conservative circular floor-plane space used to determine whether a Room Occupant has adequate passage through a Room Arrangement. It represents static clearance requirements from the confirmed Mobility Profile and does not simulate the occupant's or mobility device's movement dynamics.
+_Avoid_: Wheelchair model, body model, collision radius
+
+**Measurement Tolerance**:
+The system-defined margin applied to captured dimensions before AccessiRoom determines an analysis outcome. The prototype uses a non-editable ±5 cm margin, producing Needs Verification whenever measurement uncertainty crosses a Mobility Profile requirement.
+_Avoid_: Scan accuracy, confidence adjustment, safety margin
 
 **Profile Template**:
 An editable starting point for a Mobility Profile based on a common mobility context. Suggested measurements identify their source, applicable jurisdiction, and version, and do not assert the Room Occupant's actual needs or certify compliance.
@@ -40,12 +60,16 @@ _Avoid_: Accessibility Profile, preset requirements
 A concrete mismatch between a Room Arrangement and a requirement in the active Mobility Profile, expressed with the affected location, route, or clearance.
 _Avoid_: Violation, compliance failure, generic warning
 
+**Assessment Requirement**:
+One scored room-specific obligation created by an Access Point, Required Destination, Turning Zone, or Custom Mobility Need. Individual routes and clearance locations support its outcome but do not receive separate score weight.
+_Avoid_: Route score, finding point, measurement score
+
 **Mobility Barrier**:
 A spatial condition identified by an Analysis Finding that interferes with a Mobility Need. It is not a general safety hazard or a declaration that the room is unsafe.
 _Avoid_: Safety hazard, code violation, inaccessible room
 
 **Layout Score**:
-A deterministic, explainable 0–100 summary for comparing the Observed Arrangement and current Proposed Arrangement within one unchanged assessment. Essential Needs receive 80 points and Preferences receive 20, divided evenly within each group; when no Preferences exist, Essential Needs span all 100 points. A score of 100 means every configured need is confirmed as met; a score of 0 means none are confirmed as met. Invalid proposals receive no score, while unresolved needs produce a provisional range bounded by treating them as unmet and met. Neither endpoint means universally accessible, certified, or safe. The score exposes its contributing findings and Analysis Coverage and cannot rank different rooms, occupants, profiles, or assessment setups.
+A deterministic, explainable 0–100 summary for comparing the Observed Arrangement and current Proposed Arrangement within one unchanged assessment. Essential Assessment Requirements receive 80 points and Preferences receive 20, divided evenly within each group; when no Preferences exist, Essential requirements span all 100 points. Invalid proposals receive no score, while unresolved requirements produce a provisional range bounded by treating them as unmet and met. The score exposes every contribution and cannot rank different rooms, occupants, profiles, or assessment setups.
 _Avoid_: Accessibility rating, compliance score, certification score
 
 **Analysis Coverage**:
@@ -65,16 +89,20 @@ A Mobility Need whose satisfaction improves the Room Occupant's experience but i
 _Avoid_: Optional rule, minor issue, low-weight requirement
 
 **Required Destination**:
-A place or object in one Captured Room that the Room Occupant must be able to approach. Required Destinations are chosen explicitly for that room rather than inferred from every detected object or carried in the Mobility Profile.
+An operator-selected place or object in one Captured Room that the Room Occupant must be able to approach. Its outcome is Does Not Meet Need when any required route does not meet, otherwise Needs Verification when any route is unresolved, and Meets Need only when every route meets.
 _Avoid_: Detected object, point of interest, automatic destination
 
 **Access Point**:
-An operator-confirmed door or opening that connects the room to circulation outside it. Usable passage at every Access Point and a Suitable Route from each Access Point to every Essential Required Destination are Essential Needs; closet and cabinet doors are not Access Points.
+An operator-confirmed door or opening that connects the room to circulation outside it. Every Required Destination must have a Suitable Route from every usable Access Point, while an unusable Access Point makes every route originating there unsuitable; destination priority determines the consequence rather than whether reachability is required.
 _Avoid_: Route Origin, every detected door, scan opening
 
 **Suitable Route**:
 Any continuous path from an Access Point to a Required Destination's Approach Zone that satisfies the applicable Mobility Profile requirements. It need not be the geometrically shortest path, and its limiting clearance remains visible in the result.
 _Avoid_: Shortest path, walking line, guaranteed traversal
+
+**Representative Route**:
+The Suitable Route displayed as the strongest captured evidence for one origin and target, chosen to maximize its limiting clearance and then minimize distance when clearance is equal.
+_Avoid_: Shortest route, recommended movement, guaranteed path
 
 **Room Setup Review**:
 The required confirmation that a Captured Room correctly identifies Access Points, movement-relevant Architectural Features, Movable Objects, Required Destinations, Approach Zones, and Turning Zones. Findings and scores are unavailable until this review is complete.
@@ -85,11 +113,11 @@ The stage where the Operator decides whether a newly Captured Room is adequate t
 _Avoid_: Room Setup Review, analysis setup, results screen
 
 **Approach Zone**:
-The usable arrival area associated with a Required Destination. A destination is reachable only when the Room Occupant can follow a Suitable Route from each applicable Access Point into this zone with the space required by their Mobility Profile.
+The clear-floor area placed beside a Required Destination using dimensions from the confirmed Mobility Profile. The entire zone must remain unobstructed and accept continuous route entry, but it does not contain the route's circular Clearance Footprint because passage clearance and clear-floor space are separate requirements.
 _Avoid_: Object edge, destination point, bounding box
 
 **Turning Zone**:
-A room-specific area where the Room Occupant must be able to turn using the turning-space dimensions in their Mobility Profile.
+A room-specific Essential area where the Room Occupant must be able to turn using the turning-space dimensions in their Mobility Profile. The complete zone must remain unobstructed and be reachable from every Access Point along a Suitable Route.
 _Avoid_: Universal turning clearance, open floor area, route node
 
 **Observed Arrangement**:
@@ -144,6 +172,10 @@ _Avoid_: Delete object, erase scan, correct detection
 A physically implausible relationship within a Proposed Arrangement, such as overlapping objects or an object crossing an Architectural Feature. An arrangement with unresolved conflicts is not eligible for a Layout Score.
 _Avoid_: Accessibility concern, Analysis Finding, collision warning
 
+**Captured Evidence Conflict**:
+A physically inconsistent relationship within captured spatial evidence, such as an observed object crossing a wall. It produces Needs Verification only for affected Assessment Requirements and does not make the Observed Arrangement an Invalid Proposal.
+_Avoid_: Arrangement Conflict, invalid scan, automatic correction
+
 **Meets Need**:
 An analysis outcome indicating that the available spatial evidence supports a requirement in the Mobility Profile with sufficient margin for measurement uncertainty.
 _Avoid_: Accessible, compliant, passed
@@ -153,5 +185,5 @@ An analysis outcome indicating that the available spatial evidence conflicts wit
 _Avoid_: Inaccessible, noncompliant, failed
 
 **Needs Verification**:
-An analysis outcome indicating that measurement uncertainty prevents AccessiRoom from determining whether a requirement in the Mobility Profile is met.
+An analysis outcome indicating that measurement uncertainty or incomplete captured spatial evidence prevents AccessiRoom from determining whether a requirement in the Mobility Profile is met.
 _Avoid_: Probably accessible, borderline pass, unknown error

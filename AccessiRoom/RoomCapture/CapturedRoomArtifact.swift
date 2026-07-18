@@ -1,7 +1,7 @@
 import Foundation
 import RoomPlan
 
-enum CapturedRoomSource: String, Codable {
+enum CapturedRoomSource: String, Codable, Sendable {
     case liveScan
     case demo
 
@@ -13,7 +13,7 @@ enum CapturedRoomSource: String, Codable {
     }
 }
 
-struct CapturedRoomArtifact: Identifiable, Equatable {
+struct CapturedRoomArtifact: Identifiable, Equatable, Sendable {
     let id: UUID
     let jsonURL: URL
     let usdzURL: URL

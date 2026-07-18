@@ -7,6 +7,8 @@ struct CapturedRoomInventory: Equatable {
         let widthMetres: Double
         let depthMetres: Double
         let confidence: String?
+        let transform: [Double]
+        let polygonCorners: [[Double]]
 
         var displayName: String {
             category.replacingOccurrences(of: "_", with: " ").capitalized
@@ -38,12 +40,28 @@ struct CapturedRoomInventory: Equatable {
     }
 }
 
-private struct RoomPlanDocument: Decodable {
+struct RoomPlanDocument: Decodable {
     struct Element: Decodable {
         let identifier: String
         let category: [String: JSONValue]
         let dimensions: [Double]
         let confidence: [String: JSONValue]?
+        let transform: [Double]
+        let polygonCorners: [[Double]]
+
+        private enum CodingKeys: String, CodingKey {
+            case identifier, category, dimensions, confidence, transform, polygonCorners
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            identifier = try container.decode(String.self, forKey: .identifier)
+            category = try container.decodeIfPresent([String: JSONValue].self, forKey: .category) ?? [:]
+            dimensions = try container.decodeIfPresent([Double].self, forKey: .dimensions) ?? []
+            confidence = try container.decodeIfPresent([String: JSONValue].self, forKey: .confidence)
+            transform = try container.decodeIfPresent([Double].self, forKey: .transform) ?? []
+            polygonCorners = try container.decodeIfPresent([[Double]].self, forKey: .polygonCorners) ?? []
+        }
     }
 
     let doors: [Element]
@@ -51,9 +69,10 @@ private struct RoomPlanDocument: Decodable {
     let windows: [Element]
     let walls: [Element]
     let objects: [Element]
+    let floors: [Element]
 
     private enum CodingKeys: String, CodingKey {
-        case doors, openings, windows, walls, objects
+        case doors, openings, windows, walls, objects, floors
     }
 
     init(from decoder: Decoder) throws {
@@ -63,6 +82,7 @@ private struct RoomPlanDocument: Decodable {
         windows = try container.decodeIfPresent([Element].self, forKey: .windows) ?? []
         walls = try container.decodeIfPresent([Element].self, forKey: .walls) ?? []
         objects = try container.decodeIfPresent([Element].self, forKey: .objects) ?? []
+        floors = try container.decodeIfPresent([Element].self, forKey: .floors) ?? []
     }
 
     func items(
@@ -77,13 +97,15 @@ private struct RoomPlanDocument: Decodable {
                 depthMetres: element.dimensions.count > 2
                     ? element.dimensions[2]
                     : element.dimensions.dropFirst().first ?? 0,
-                confidence: element.confidence?.keys.first
+                confidence: element.confidence?.keys.first,
+                transform: element.transform,
+                polygonCorners: element.polygonCorners
             )
         }
     }
 }
 
-private enum JSONValue: Decodable {
+enum JSONValue: Decodable {
     case ignored
 
     init(from decoder: Decoder) throws {
@@ -92,7 +114,7 @@ private enum JSONValue: Decodable {
     }
 }
 
-enum DestinationPriority: String, Codable, CaseIterable, Identifiable {
+enum DestinationPriority: String, Codable, CaseIterable, Identifiable, Sendable {
     case essential
     case preference
 
@@ -100,7 +122,7 @@ enum DestinationPriority: String, Codable, CaseIterable, Identifiable {
     var title: String { rawValue.capitalized }
 }
 
-enum ApproachSide: String, Codable, CaseIterable, Identifiable {
+enum ApproachSide: String, Codable, CaseIterable, Identifiable, Sendable {
     case front
     case left
     case right
@@ -110,13 +132,13 @@ enum ApproachSide: String, Codable, CaseIterable, Identifiable {
     var title: String { rawValue.capitalized }
 }
 
-struct ApproachZoneSetup: Codable, Equatable {
+struct ApproachZoneSetup: Codable, Equatable, Sendable {
     var side: ApproachSide
     var widthMetres: Double
     var depthMetres: Double
 }
 
-struct CapturedObjectSetup: Codable, Equatable, Identifiable {
+struct CapturedObjectSetup: Codable, Equatable, Identifiable, Sendable {
     let id: String
     var isIncluded: Bool
     var isMovable: Bool
@@ -125,7 +147,7 @@ struct CapturedObjectSetup: Codable, Equatable, Identifiable {
     var approachZone: ApproachZoneSetup
 }
 
-struct TurningZoneSetup: Codable, Equatable, Identifiable {
+struct TurningZoneSetup: Codable, Equatable, Identifiable, Sendable {
     var id: UUID = UUID()
     var name: String
     var centreXMetres: Double
@@ -133,7 +155,7 @@ struct TurningZoneSetup: Codable, Equatable, Identifiable {
     var diameterMetres: Double
 }
 
-struct RoomSetup: Codable, Equatable {
+struct RoomSetup: Codable, Equatable, Sendable {
     let roomID: UUID
     var accessPointIDs: Set<String>
     var architecturalFeatureIDs: Set<String>
