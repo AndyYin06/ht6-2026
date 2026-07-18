@@ -18,6 +18,7 @@ struct AssessmentView: View {
     @State private var errorMessage: String?
 
     private let movableObjects: [CapturedRoomInventory.Item]
+    private let objectDisplayNames: [String: String]
 
     init(
         room: CapturedRoomArtifact,
@@ -34,7 +35,9 @@ struct AssessmentView: View {
         let initial = store.proposedArrangement ?? .empty(roomID: room.id)
         _arrangement = State(initialValue: initial)
         let movableIDs = Set(setup.objects.filter { $0.isIncluded && $0.isMovable }.map(\.id))
-        movableObjects = ((try? CapturedRoomInventory.load(from: room.jsonURL))?.objects ?? [])
+        let roomObjects = (try? CapturedRoomInventory.load(from: room.jsonURL))?.objects ?? []
+        objectDisplayNames = CapturedRoomInventory.displayNames(for: roomObjects)
+        movableObjects = roomObjects
             .filter { movableIDs.contains($0.id) }
         _selectedObjectID = State(initialValue: movableObjects.first?.id)
     }
@@ -297,7 +300,7 @@ struct AssessmentView: View {
     }
 
     private func objectName(_ id: String) -> String {
-        movableObjects.first(where: { $0.id == id })?.displayName ?? id
+        objectDisplayNames[id] ?? id
     }
 
     private func placementDescription(_ change: ProposedObjectChange) -> String {
@@ -391,7 +394,7 @@ struct AssessmentView: View {
             } else {
                 Picker("Movable Object", selection: $selectedObjectID) {
                     ForEach(movableObjects) { object in
-                        Text(object.displayName).tag(Optional(object.id))
+                        Text(objectName(object.id)).tag(Optional(object.id))
                     }
                 }
 
@@ -443,7 +446,7 @@ struct AssessmentView: View {
             }
             .buttonStyle(.bordered)
 
-            Toggle("Propose removing \(object.displayName)", isOn: Binding(
+            Toggle("Propose removing \(objectName(object.id))", isOn: Binding(
                 get: { change.isRemoved },
                 set: { value in adjust(object.id) { $0.isRemoved = value } }
             ))
@@ -701,6 +704,9 @@ private struct AccessibilityMap: View {
                 for point in route.points.dropFirst() { path.addLine(to: transform.point(point)) }
                 context.stroke(path, with: .color(color(for: route.outcome)), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             }
+            for item in map.obstacles + map.accessPoints + map.zones where item.displaysLabel {
+                drawLabel(item.label, at: item.polygon.centre, context: &context, transform: transform)
+            }
         }
         .background(.background, in: RoundedRectangle(cornerRadius: 16))
         .overlay(alignment: .topLeading) {
@@ -757,6 +763,32 @@ private struct AccessibilityMap: View {
         mark.move(to: transform.point(polygon.points[1]))
         mark.addLine(to: transform.point(polygon.points[3]))
         context.stroke(mark, with: .color(.red), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+    }
+
+    private func drawLabel(
+        _ label: String,
+        at point: FloorPoint,
+        context: inout GraphicsContext,
+        transform: MapTransform
+    ) {
+        let resolvedText = context.resolve(
+            Text(label)
+                .font(.caption2.bold())
+                .foregroundStyle(Color.primary)
+        )
+        let textSize = resolvedText.measure(in: CGSize(width: 140, height: 40))
+        let centre = transform.point(point)
+        let backgroundRect = CGRect(
+            x: centre.x - textSize.width / 2 - 4,
+            y: centre.y - textSize.height / 2 - 2,
+            width: textSize.width + 8,
+            height: textSize.height + 4
+        )
+        context.fill(
+            Path(roundedRect: backgroundRect, cornerRadius: 4),
+            with: .color(Color(.systemBackground).opacity(0.85))
+        )
+        context.draw(resolvedText, at: centre, anchor: .center)
     }
 }
 

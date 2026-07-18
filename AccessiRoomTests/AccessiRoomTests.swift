@@ -2,6 +2,28 @@ import XCTest
 @testable import AccessiRoom
 
 final class AccessiRoomTests: XCTestCase {
+    func testDuplicateRoomItemDisplayNamesAreNumberedInCaptureOrder() {
+        let items = [
+            inventoryItem(id: "chair-a", category: "chair"),
+            inventoryItem(id: "table", category: "table"),
+            inventoryItem(id: "chair-b", category: "chair"),
+            inventoryItem(id: "wall-a", category: "wall"),
+            inventoryItem(id: "wall-b", category: "wall"),
+            inventoryItem(id: "door-a", category: "door"),
+            inventoryItem(id: "door-b", category: "door"),
+        ]
+
+        let names = CapturedRoomInventory.displayNames(for: items)
+
+        XCTAssertEqual(names["chair-a"], "Chair 1")
+        XCTAssertEqual(names["table"], "Table")
+        XCTAssertEqual(names["chair-b"], "Chair 2")
+        XCTAssertEqual(names["wall-a"], "Wall 1")
+        XCTAssertEqual(names["wall-b"], "Wall 2")
+        XCTAssertEqual(names["door-a"], "Door 1")
+        XCTAssertEqual(names["door-b"], "Door 2")
+    }
+
     func testMeasurementToleranceClassifiesConservatively() {
         XCTAssertEqual(
             AssessmentEngine.classify(measured: 0.95, required: 0.90, tolerance: 0.05),
@@ -435,6 +457,48 @@ final class AccessiRoomTests: XCTestCase {
         XCTAssertTrue(result.conflicts.contains { $0.title == "Objects overlap" })
     }
 
+    @MainActor
+    func testAssessmentMapUsesNumberedLabelsForDuplicateObjects() throws {
+        let fixture = try RoomStoreFixture()
+        defer { fixture.remove() }
+
+        let store = AcceptedRoomStore(rootDirectory: fixture.storeDirectory)
+        try store.accept(fixture.makeArrangementCandidate(secondObjectCategory: "chair"))
+        let room = try XCTUnwrap(store.acceptedRoom)
+        let inventory = try CapturedRoomInventory.load(from: room.jsonURL)
+        var setup = RoomSetup.draft(roomID: room.id, inventory: inventory, measurements: nil)
+        setup.accessPointIDs = ["door-1", "door-2"]
+        setup.confirmedAt = Date()
+
+        let result = try AssessmentEngine().assess(
+            room: room,
+            profile: .customDraft(),
+            setup: setup
+        )
+        let labelsByID = Dictionary(uniqueKeysWithValues: result.map.obstacles.map { ($0.id, $0.label) })
+
+        XCTAssertEqual(labelsByID["chair-1"], "Chair 1")
+        XCTAssertEqual(labelsByID["table-1"], "Chair 2")
+        XCTAssertEqual(labelsByID["wall-1"], "Wall 1")
+        XCTAssertEqual(labelsByID["wall-2"], "Wall 2")
+        XCTAssertTrue(result.map.obstacles.first { $0.id == "chair-1" }?.displaysLabel == true)
+        XCTAssertTrue(result.map.obstacles.first { $0.id == "wall-1" }?.displaysLabel == true)
+        XCTAssertEqual(result.map.accessPoints.map(\.label), ["Door 1", "Door 2"])
+        XCTAssertTrue(result.map.accessPoints.allSatisfy(\.displaysLabel))
+    }
+
+    private func inventoryItem(id: String, category: String) -> CapturedRoomInventory.Item {
+        CapturedRoomInventory.Item(
+            id: id,
+            category: category,
+            widthMetres: 1,
+            depthMetres: 1,
+            confidence: nil,
+            transform: [],
+            polygonCorners: []
+        )
+    }
+
     private func requirement(
         id: String = UUID().uuidString,
         outcome: AnalysisOutcome,
@@ -549,7 +613,7 @@ private struct RoomStoreFixture {
         return candidate
     }
 
-    func makeArrangementCandidate() throws -> CapturedRoomArtifact {
+    func makeArrangementCandidate(secondObjectCategory: String = "table") throws -> CapturedRoomArtifact {
         let candidate = try makeCandidate(source: .demo, contents: "arrangement")
         let identity = "[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]"
         let json = """
@@ -565,12 +629,22 @@ private struct RoomStoreFixture {
             "category": {"door": {}},
             "dimensions": [1.2,2.0,0],
             "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-3,1]
+          },{
+            "identifier": "door-2",
+            "category": {"door": {}},
+            "dimensions": [1.2,2.0,0],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 2,0,3,1]
           }],
           "walls": [{
             "identifier": "wall-1",
             "category": {"wall": {}},
             "dimensions": [6.0,2.4,0],
             "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-3,1]
+          },{
+            "identifier": "wall-2",
+            "category": {"wall": {}},
+            "dimensions": [6.0,2.4,0],
+            "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,3,1]
           }],
           "objects": [{
             "identifier": "chair-1",
@@ -579,7 +653,7 @@ private struct RoomStoreFixture {
             "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, -1,0,0,1]
           },{
             "identifier": "table-1",
-            "category": {"table": {}},
+            "category": {"\(secondObjectCategory)": {}},
             "dimensions": [0.8,1.0,0.8],
             "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 1,0,0,1]
           }]

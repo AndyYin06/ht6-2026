@@ -23,6 +23,23 @@ struct CapturedRoomInventory: Equatable {
     let architecturalFeatures: [Item]
     let objects: [Item]
 
+    static func displayNames(for items: [Item]) -> [String: String] {
+        let nameCounts = Dictionary(grouping: items, by: \.displayName)
+            .mapValues(\.count)
+        var nextNumberByName: [String: Int] = [:]
+
+        return Dictionary(uniqueKeysWithValues: items.map { item in
+            let baseName = item.displayName
+            guard nameCounts[baseName, default: 0] > 1 else {
+                return (item.id, baseName)
+            }
+
+            let number = nextNumberByName[baseName, default: 0] + 1
+            nextNumberByName[baseName] = number
+            return (item.id, "\(baseName) \(number)")
+        })
+    }
+
     static func load(from url: URL) throws -> CapturedRoomInventory {
         let data = try Data(contentsOf: url)
         let room = try JSONDecoder().decode(RoomPlanDocument.self, from: data)
