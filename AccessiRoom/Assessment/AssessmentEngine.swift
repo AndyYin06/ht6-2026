@@ -78,6 +78,7 @@ struct AssessmentRoute: Identifiable, Equatable, Sendable {
     let targetID: String
     let points: [FloorPoint]
     let limitingClearanceMetres: Double?
+    let limitingPoint: FloorPoint?
     let outcome: AnalysisOutcome
 }
 
@@ -185,7 +186,7 @@ enum AssessmentEngineError: LocalizedError, Sendable {
 }
 
 struct AssessmentEngine {
-    static let engineVersion = "arrangements-2"
+    static let engineVersion = "arrangements-3"
     static let measurementToleranceMetres = 0.05
     static let preferredGridSizeMetres = 0.05
 
@@ -303,6 +304,7 @@ struct AssessmentEngine {
                         targetID: destination.id,
                         points: [],
                         limitingClearanceMetres: accessPoint.width,
+                        limitingPoint: accessPoint.polygon.centre,
                         outcome: inherited
                     )
                 } else if !spatialRoom.floorIsComplete {
@@ -312,11 +314,12 @@ struct AssessmentEngine {
                         targetID: destination.id,
                         points: [],
                         limitingClearanceMetres: nil,
+                        limitingPoint: nil,
                         outcome: .needsVerification
                     )
                 } else {
                     route = grid.widestRoute(
-                        from: accessPoint.polygon.centre,
+                        from: accessPoint,
                         to: destination.zone,
                         accessPointID: accessPoint.id,
                         targetID: destination.id,
@@ -337,7 +340,7 @@ struct AssessmentEngine {
                             )
                         } ?? "Captured evidence is insufficient to establish a Suitable Route.",
                         outcome: route.outcome,
-                        location: route.points.isEmpty ? nil : route.points[route.points.count / 2]
+                        location: route.limitingPoint
                     ))
                 }
             }
@@ -373,11 +376,12 @@ struct AssessmentEngine {
                         targetID: turningZone.id,
                         points: [],
                         limitingClearanceMetres: accessPoint.width,
+                        limitingPoint: accessPoint.polygon.centre,
                         outcome: accessOutcomes[accessPoint.id] ?? .needsVerification
                     )
                 } else if spatialRoom.floorIsComplete {
                     route = grid.widestRoute(
-                        from: accessPoint.polygon.centre,
+                        from: accessPoint,
                         to: turningZone.polygon,
                         accessPointID: accessPoint.id,
                         targetID: turningZone.id,
@@ -390,6 +394,7 @@ struct AssessmentEngine {
                         targetID: turningZone.id,
                         points: [],
                         limitingClearanceMetres: nil,
+                        limitingPoint: nil,
                         outcome: .needsVerification
                     )
                 }
@@ -1003,13 +1008,14 @@ private struct NavigationGrid {
     }
 
     func widestRoute(
-        from startPoint: FloorPoint,
+        from accessPoint: SpatialRoom.SpatialElement,
         to target: FloorPolygon,
         accessPointID: String,
         targetID: String,
         requiredWidth: Double
     ) -> AssessmentRoute {
-        guard let start = nearestFreeCell(to: startPoint) else {
+        let starts = portalStartCells(for: accessPoint, requiredWidth: requiredWidth)
+        guard !starts.isEmpty else {
             return unresolvedRoute(accessPointID: accessPointID, targetID: targetID)
         }
         let goals = allFreeCells(in: target)
@@ -1017,70 +1023,132 @@ private struct NavigationGrid {
             return unresolvedRoute(accessPointID: accessPointID, targetID: targetID)
         }
 
-        var capacity = Array(repeating: -Double.infinity, count: columns * rows)
-        var distance = Array(repeating: Double.infinity, count: columns * rows)
-        var previous: [Cell: Cell] = [:]
-        var queue = MaxHeap()
-        let startIndex = index(start)
-        capacity[startIndex] = clearance[startIndex] * 2
-        distance[startIndex] = 0
-        queue.push(QueueEntry(cell: start, priority: capacity[startIndex]))
-        let goalSet = Set(goals)
-        var reachedGoal: Cell?
-
-        while let current = queue.pop() {
-            if goalSet.contains(current.cell) {
-                reachedGoal = current.cell
-                break
-            }
-            let currentIndex = index(current.cell)
-            if current.priority + 0.0001 < capacity[currentIndex] { continue }
-            for (neighbor, stepDistance) in neighbors(of: current.cell) {
-                let neighborIndex = index(neighbor)
-                guard !blocked[neighborIndex] else { continue }
-                let candidateCapacity = min(capacity[currentIndex], clearance[neighborIndex] * 2)
-                let candidateDistance = distance[currentIndex] + stepDistance
-                if candidateCapacity > capacity[neighborIndex] + 0.0001
-                    || (abs(candidateCapacity - capacity[neighborIndex]) <= 0.0001
-                        && candidateDistance < distance[neighborIndex]) {
-                    capacity[neighborIndex] = candidateCapacity
-                    distance[neighborIndex] = candidateDistance
-                    previous[neighbor] = current.cell
-                    queue.push(QueueEntry(cell: neighbor, priority: candidateCapacity))
-                }
-            }
+        // Establish feasibility first, then choose the shortest route that preserves
+        // that best bottleneck. Mixing both concerns in one heap caused long,
+        // arbitrary routes across equal-clearance cells.
+        let capacity = widestCapacities(from: starts, entryWidth: accessPoint.width)
+        guard let measured = goals.map({ capacity[index($0)] }).max(), measured.isFinite else {
+            return failedRoute(accessPointID: accessPointID, targetID: targetID)
         }
 
-        guard let goal = reachedGoal else {
-            return AssessmentRoute(
-                id: "route-\(accessPointID)-\(targetID)",
-                accessPointID: accessPointID,
-                targetID: targetID,
-                points: [],
-                limitingClearanceMetres: 0,
-                outcome: .doesNotMeetNeed
-            )
+        let bestGoals = Set(goals.filter { capacity[index($0)] >= measured - 0.0001 })
+        guard let cells = shortestPath(
+            from: starts,
+            to: bestGoals,
+            preserving: measured,
+            entryPoint: accessPoint.polygon.centre
+        ) else {
+            return failedRoute(accessPointID: accessPointID, targetID: targetID)
         }
 
-        var cells = [goal]
-        var cursor = goal
-        while cursor != start, let parent = previous[cursor] {
-            cells.append(parent)
-            cursor = parent
-        }
-        cells.reverse()
-        let measured = max(0, capacity[index(goal)] - cellSize)
+        let interiorLimit = cells.dropFirst().min { navigableWidth(at: $0) < navigableWidth(at: $1) }
+        let interiorWidth = interiorLimit.map(navigableWidth(at:)) ?? .infinity
+        let limitingPoint = accessPoint.width <= interiorWidth + 0.0001
+            ? accessPoint.polygon.centre
+            : interiorLimit.map(point(for:))
+        let interiorPoints = simplify(cells.map(point(for:)), preserving: measured)
+        let routePoints = [accessPoint.polygon.centre] + interiorPoints
+
         return AssessmentRoute(
             id: "route-\(accessPointID)-\(targetID)",
             accessPointID: accessPointID,
             targetID: targetID,
-            points: cells.map(point(for:)),
+            points: routePoints,
             limitingClearanceMetres: measured,
+            limitingPoint: limitingPoint,
             outcome: AssessmentEngine.classify(
                 measured: measured,
                 required: requiredWidth,
                 tolerance: AssessmentEngine.measurementToleranceMetres
             )
+        )
+    }
+
+    private func widestCapacities(from starts: [Cell], entryWidth: Double) -> [Double] {
+        var capacity = Array(repeating: -Double.infinity, count: columns * rows)
+        var queue = MaxHeap()
+
+        for start in starts {
+            capacity[index(start)] = entryWidth
+            queue.push(QueueEntry(cell: start, priority: entryWidth))
+        }
+
+        while let current = queue.pop() {
+            let currentIndex = index(current.cell)
+            if current.priority + 0.0001 < capacity[currentIndex] { continue }
+            for (neighbor, _) in neighbors(of: current.cell) {
+                let neighborIndex = index(neighbor)
+                guard !blocked[neighborIndex] else { continue }
+                let candidateCapacity = min(capacity[currentIndex], navigableWidth(at: neighbor))
+                if candidateCapacity > capacity[neighborIndex] + 0.0001 {
+                    capacity[neighborIndex] = candidateCapacity
+                    queue.push(QueueEntry(cell: neighbor, priority: candidateCapacity))
+                }
+            }
+        }
+        return capacity
+    }
+
+    private func shortestPath(
+        from starts: [Cell],
+        to goals: Set<Cell>,
+        preserving minimumWidth: Double,
+        entryPoint: FloorPoint
+    ) -> [Cell]? {
+        let startSet = Set(starts)
+        var distance = Array(repeating: Double.infinity, count: columns * rows)
+        var previous: [Cell: Cell] = [:]
+        var queue = MaxHeap()
+
+        for start in starts {
+            let initialDistance = entryPoint.distance(to: point(for: start))
+            distance[index(start)] = initialDistance
+            queue.push(QueueEntry(cell: start, priority: -initialDistance))
+        }
+
+        var reachedGoal: Cell?
+        while let current = queue.pop() {
+            let currentIndex = index(current.cell)
+            let currentDistance = -current.priority
+            if currentDistance > distance[currentIndex] + 0.0001 { continue }
+            if goals.contains(current.cell) {
+                reachedGoal = current.cell
+                break
+            }
+            for (neighbor, stepDistance) in neighbors(of: current.cell) {
+                let neighborIndex = index(neighbor)
+                guard !blocked[neighborIndex],
+                      startSet.contains(neighbor) || navigableWidth(at: neighbor) >= minimumWidth - 0.0001
+                else { continue }
+                let candidateDistance = distance[currentIndex] + stepDistance
+                if candidateDistance + 0.0001 < distance[neighborIndex] {
+                    distance[neighborIndex] = candidateDistance
+                    previous[neighbor] = current.cell
+                    queue.push(QueueEntry(cell: neighbor, priority: -candidateDistance))
+                }
+            }
+        }
+
+        guard let goal = reachedGoal else { return nil }
+        var cells = [goal]
+        var cursor = goal
+        while !startSet.contains(cursor), let parent = previous[cursor] {
+            cells.append(parent)
+            cursor = parent
+        }
+        cells.reverse()
+        return cells
+    }
+
+    private func failedRoute(accessPointID: String, targetID: String) -> AssessmentRoute {
+        AssessmentRoute(
+            id: "route-\(accessPointID)-\(targetID)",
+            accessPointID: accessPointID,
+            targetID: targetID,
+            points: [],
+            limitingClearanceMetres: 0,
+            limitingPoint: nil,
+            outcome: .doesNotMeetNeed
         )
     }
 
@@ -1091,8 +1159,116 @@ private struct NavigationGrid {
             targetID: targetID,
             points: [],
             limitingClearanceMetres: nil,
+            limitingPoint: nil,
             outcome: .needsVerification
         )
+    }
+
+    private func portalStartCells(
+        for accessPoint: SpatialRoom.SpatialElement,
+        requiredWidth: Double
+    ) -> [Cell] {
+        let polygon = accessPoint.polygon
+        guard polygon.points.count == 4 else {
+            return nearestFreeCell(to: polygon.centre).map { [$0] } ?? []
+        }
+
+        let sideCentres = [
+            midpoint(polygon.points[0], polygon.points[1]),
+            midpoint(polygon.points[2], polygon.points[3]),
+        ]
+        var result: [Cell] = []
+        for sideCentre in sideCentres {
+            let outward = normalized(from: polygon.centre, to: sideCentre)
+            // The opening width is assessed from captured geometry. Begin grid
+            // clearance once the traveller's centre is fully inside the room so
+            // the exterior floor boundary is not counted as an interior obstacle.
+            let bodyRadius = requiredWidth / 2
+            for additionalOffset in [0.0, cellSize, cellSize * 2] {
+                let candidate = FloorPoint(
+                    x: sideCentre.x + outward.x * (bodyRadius + additionalOffset),
+                    z: sideCentre.z + outward.z * (bodyRadius + additionalOffset)
+                )
+                guard room.floor.contains(candidate), let cell = cell(containing: candidate) else { continue }
+                if !blocked[index(cell)], connectionIsUnblocked(from: sideCentre, to: candidate) {
+                    result.append(cell)
+                    break
+                }
+            }
+        }
+        let unique = Array(Set(result)).sorted {
+            $0.row == $1.row ? $0.column < $1.column : $0.row < $1.row
+        }
+        return unique
+    }
+
+    private func connectionIsUnblocked(from start: FloorPoint, to end: FloorPoint) -> Bool {
+        let sampleCount = max(1, Int(ceil(start.distance(to: end) / (cellSize / 2))))
+        for sample in 0...sampleCount {
+            let fraction = Double(sample) / Double(sampleCount)
+            let point = FloorPoint(
+                x: start.x + (end.x - start.x) * fraction,
+                z: start.z + (end.z - start.z) * fraction
+            )
+            if room.isBlocked(point) { return false }
+        }
+        return true
+    }
+
+    private func simplify(_ points: [FloorPoint], preserving minimumWidth: Double) -> [FloorPoint] {
+        guard points.count > 2 else { return points }
+        var result = [points[0]]
+        var anchor = 0
+        while anchor < points.count - 1 {
+            var next = points.count - 1
+            while next > anchor + 1,
+                  !hasLineOfSight(from: points[anchor], to: points[next], minimumWidth: minimumWidth) {
+                next -= 1
+            }
+            result.append(points[next])
+            anchor = next
+        }
+        return result
+    }
+
+    private func hasLineOfSight(
+        from start: FloorPoint,
+        to end: FloorPoint,
+        minimumWidth: Double
+    ) -> Bool {
+        let sampleCount = max(1, Int(ceil(start.distance(to: end) / (cellSize / 2))))
+        for sample in 1...sampleCount {
+            let fraction = Double(sample) / Double(sampleCount)
+            let point = FloorPoint(
+                x: start.x + (end.x - start.x) * fraction,
+                z: start.z + (end.z - start.z) * fraction
+            )
+            guard let cell = cell(containing: point),
+                  !blocked[index(cell)],
+                  navigableWidth(at: cell) >= minimumWidth - 0.0001
+            else { return false }
+        }
+        return true
+    }
+
+    private func navigableWidth(at cell: Cell) -> Double {
+        max(0, clearance[index(cell)] * 2 - cellSize)
+    }
+
+    private func cell(containing point: FloorPoint) -> Cell? {
+        let column = Int(floor((point.x - minX) / cellSize))
+        let row = Int(floor((point.z - minZ) / cellSize))
+        guard column >= 0, row >= 0, column < columns, row < rows else { return nil }
+        return Cell(column: column, row: row)
+    }
+
+    private func midpoint(_ lhs: FloorPoint, _ rhs: FloorPoint) -> FloorPoint {
+        FloorPoint(x: (lhs.x + rhs.x) / 2, z: (lhs.z + rhs.z) / 2)
+    }
+
+    private func normalized(from start: FloorPoint, to end: FloorPoint) -> FloorPoint {
+        let length = max(start.distance(to: end), .leastNonzeroMagnitude)
+        return FloorPoint(x: (end.x - start.x) / length, z: (end.z - start.z) / length)
     }
 
     private func nearestFreeCell(to point: FloorPoint) -> Cell? {
